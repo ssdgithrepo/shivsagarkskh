@@ -5,7 +5,7 @@
 <!-- GitHub Pages mode: set window.SHIVSAGAR_BACKEND_URL before this script block, or replace BACKEND_URL above with your Apps Script /exec URL. -->
 let state={token:null,user:null,settings:{},branches:[],products:[],customers:[],suppliers:[],users:[],sales:[],saleItems:[],purchases:[],purchaseItems:[],salesReturns:[],purchaseReturns:[],payments:[],adjustments:[],expenses:[]},cart=[];
 const $=id=>document.getElementById(id), esc=x=>String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])), money=x=>'₹'+Number(x||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
-const BACKEND_URL = window.SHIVSAGAR_BACKEND_URL || 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_EXEC_URL_HERE';
+const BACKEND_URL = window.SHIVSAGAR_BACKEND_URL || 'https://script.google.com/macros/s/AKfycbwWv0PYu5Dam_9jmJmMjHZ7ykEDOJH-sV4hiLyeztn-GphuQe3CThUeSDMsILEfvm8Grw/exec';
 function call(a,p){
   if(window.google && google.script && google.script.run){
     return new Promise((res,rej)=>google.script.run.withSuccessHandler(r=>r?.ok===false?rej(new Error(r.error)):res(r)).withFailureHandler(e=>rej(e)).api(a,p||{}));
