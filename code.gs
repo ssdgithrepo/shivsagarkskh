@@ -1,71 +1,946 @@
-const SS_ID = '1lrgeU_WymEdhSi7P0uOyH5BUpvTD7xt1SqVYW1Gpmp4';
-const TZ = Session.getScriptTimeZone() || 'Asia/Kolkata';
-const SHEETS = {
-  Users:['id','name','username','passwordHash','role','active','createdAt'],
-  Products:['id','sku','barcode','name','category','brand','unit','hsn','gst','purchaseRate','rate','mrp','stock','reorder','batch','expiry','active','createdAt'],
-  Customers:['id','name','phone','village','gstin','credit','creditLimit','active','createdAt'],
-  Suppliers:['id','name','phone','gstin','address','payable','active','createdAt'],
-  Sales:['id','invoice','date','time','customerId','customer','payment','subtotal','tax','total','createdBy','createdAt'],
-  SaleItems:['id','saleId','productId','sku','name','qty','rate','gst','tax','lineTotal'],
-  Purchases:['id','invoice','date','supplierId','supplier','payment','subtotal','tax','total','createdBy','createdAt'],
-  PurchaseItems:['id','purchaseId','productId','sku','name','qty','rate','gst','tax','lineTotal'],
-  SalesReturns:['id','returnNo','date','saleId','invoice','customerId','customer','refundMode','subtotal','tax','total','createdBy','createdAt'],
-  SalesReturnItems:['id','returnId','saleItemId','productId','sku','name','qty','rate','gst','tax','lineTotal'],
-  PurchaseReturns:['id','returnNo','date','purchaseId','invoice','supplierId','supplier','paymentMode','subtotal','tax','total','createdBy','createdAt'],
-  PurchaseReturnItems:['id','returnId','purchaseItemId','productId','sku','name','qty','rate','gst','tax','lineTotal'],
-  Payments:['id','date','type','partyId','party','mode','reference','amount','notes','createdBy','createdAt'],
-  StockAdjustments:['id','date','productId','sku','product','type','qty','reason','reference','createdBy','createdAt'],
-  Expenses:['id','date','category','description','payment','amount','createdBy','createdAt'],
-  Settings:['key','value'],
-  AuditLog:['id','timestamp','username','role','action','entity','entityId','details']
+/*
+ SHIVSAGAR KRUSHI SEVA KENDRA & HARDWARE
+ Google Sheets + Google Apps Script Backend V2
+ ------------------------------------------------
+ 1. Put your Google Sheet ID into SS_ID.
+ 2. Run setupDatabase().
+ 3. Run createInitialOwner().
+ 4. Deploy as Web App.
+ 5. Frontend calls POST /exec with:
+    {action:"login", payload:{username:"...",password:"..."}}
+    {action:"list", token:"...", payload:{entity:"Products"}}
+*/
+
+const SS_ID = '13NhXw_X7-4ua9UdwjxyEmN6yanXZukMLeBhbvMKTqq0';
+const TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+
+const SCHEMAS = {"Users":["id","name","username","password","role","branchId","active","createdAt","updatedAt"],"Branches":["id","name","code","address","phone","gstin","active","createdAt","updatedAt"],"Products":["id","sku","barcode","name","category","unit","hsn","gstRate","purchasePrice","sellingPrice","mrp","stock","reorderLevel","batch","expiry","supplierId","branchId","active","createdAt","updatedAt"],"Customers":["id","name","phone","whatsapp","email","address","gstin","openingBalance","creditLimit","branchId","active","createdAt","updatedAt"],"Suppliers":["id","name","phone","email","address","gstin","openingBalance","creditLimit","branchId","active","createdAt","updatedAt"],"Sales":["id","invoiceNo","date","customerId","branchId","subtotal","discount","taxableAmount","gstAmount","total","paymentMode","paidAmount","creditAmount","status","notes","createdBy","createdAt"],"SaleItems":["id","saleId","productId","sku","productName","qty","unitPrice","discount","gstRate","gstAmount","lineTotal","batch","expiry","createdAt"],"Purchases":["id","grnNo","invoiceNo","date","supplierId","branchId","subtotal","discount","taxableAmount","gstAmount","total","paidAmount","creditAmount","status","notes","createdBy","createdAt"],"PurchaseItems":["id","purchaseId","productId","sku","productName","qty","unitCost","discount","gstRate","gstAmount","lineTotal","batch","expiry","createdAt"],"SalesReturns":["id","returnNo","date","saleId","invoiceNo","customerId","branchId","subtotal","gstAmount","total","refundMode","reason","createdBy","createdAt"],"PurchaseReturns":["id","returnNo","date","purchaseId","grnNo","supplierId","branchId","subtotal","gstAmount","total","adjustmentMode","reason","createdBy","createdAt"],"SalesReturnItems":["id","returnId","productId","sku","productName","qty","unitPrice","gstRate","gstAmount","lineTotal","batch","expiry","createdAt"],"PurchaseReturnItems":["id","returnId","productId","sku","productName","qty","unitCost","gstRate","gstAmount","lineTotal","batch","expiry","createdAt"],"Payments":["id","date","type","partyId","partyName","referenceType","referenceId","invoiceNo","branchId","amount","paymentMode","referenceNo","notes","createdBy","createdAt"],"StockAdjustments":["id","date","productId","sku","productName","branchId","type","qty","reason","reference","batch","expiry","createdBy","createdAt"],"Expenses":["id","date","category","description","amount","gstAmount","paymentMode","branchId","referenceNo","createdBy","createdAt"],"Settings":["key","value"],"AuditLog":["id","timestamp","userId","username","action","entity","entityId","details","branchId"],"SiteContent":["id","section","title","subtitle","content","imageUrl","buttonText","buttonUrl","active","sortOrder"],"HeroSlides":["id","title","subtitle","description","imageUrl","buttonText","buttonUrl","active","sortOrder"],"SiteImages":["id","name","imageUrl","altText","section","active","sortOrder"],"SiteProducts":["id","name","shortDescription","description","imageUrl","priceText","category","active","sortOrder"],"SiteServices":["id","name","description","icon","imageUrl","active","sortOrder"],"BusinessInfo":["id","businessName","tagline","logoUrl","phone","whatsapp","email","address","gstin","hours","about","facebook","instagram","youtube","active"],"NavLinks":["id","label","url","target","active","sortOrder"],"ContactInfo":["id","label","value","type","active","sortOrder"]};
+const ENTITY_ALIASES = {
+  product:'Products', products:'Products',
+  customer:'Customers', customers:'Customers',
+  supplier:'Suppliers', suppliers:'Suppliers',
+  sale:'Sales', sales:'Sales',
+  saleitem:'SaleItems', saleitems:'SaleItems',
+  purchase:'Purchases', purchases:'Purchases',
+  purchaseitem:'PurchaseItems', purchaseitems:'PurchaseItems',
+  salesreturn:'SalesReturns', salesreturns:'SalesReturns',
+  purchasereturn:'PurchaseReturns', purchasereturns:'PurchaseReturns',
+  salesreturnitem:'SalesReturnItems', salesreturnitems:'SalesReturnItems',
+  purchasereturnitem:'PurchaseReturnItems', purchasereturnitems:'PurchaseReturnItems',
+  payment:'Payments', payments:'Payments',
+  expense:'Expenses', expenses:'Expenses',
+  stockadjustment:'StockAdjustments', stockadjustments:'StockAdjustments',
+  stock:'StockAdjustments',
+  user:'Users', users:'Users',
+  branch:'Branches', branches:'Branches',
+  setting:'Settings', settings:'Settings',
+  audit:'AuditLog', auditlog:'AuditLog',
+  sitecontent:'SiteContent',
+  heroslide:'HeroSlides', heroslides:'HeroSlides',
+  siteimage:'SiteImages', siteimages:'SiteImages',
+  siteproduct:'SiteProducts', siteproducts:'SiteProducts',
+  siteservice:'SiteServices', siteservices:'SiteServices',
+  businessinfo:'BusinessInfo',
+  navlink:'NavLinks', navlinks:'NavLinks',
+  contactinfo:'ContactInfo'
 };
 
-function doGet(){return HtmlService.createTemplateFromFile('index').evaluate().setTitle('Shivsagar Krushi Seva Kendra & Hardware').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)}
-function setupDatabase(){
-  if(SS_ID==='PASTE_YOUR_GOOGLE_SHEET_ID_HERE') throw new Error('Set SS_ID in Code.gs before deployment.');
-  const ss=SpreadsheetApp.openById(SS_ID);
-  Object.keys(SHEETS).forEach(n=>{let sh=ss.getSheetByName(n)||ss.insertSheet(n);if(sh.getLastRow()===0)sh.appendRow(SHEETS[n]);else{const h=sh.getRange(1,1,1,SHEETS[n].length).getValues()[0];if(h.join('|')!==SHEETS[n].join('|')){sh.clear();sh.appendRow(SHEETS[n])}}sh.setFrozenRows(1);sh.getRange(1,1,1,SHEETS[n].length).setFontWeight('bold')});
-  if(!getRows('Settings').length)[['shopName','Shivsagar Krushi Seva Kendra & Hardware'],['address',''],['phone',''],['whatsapp',''],['email',''],['gstin',''],['invoicePrefix','SSK'],['currency','INR']].forEach(x=>appendRow('Settings',{key:x[0],value:x[1]}));
-  if(!getRows('Users').length)appendRow('Users',{id:uid(),name:'Owner / Administrator',username:'admin',passwordHash:hash_('admin123'),role:'Administrator',active:true,createdAt:now_()});
-  return {ok:true};
+function doGet(e) {
+  try {
+    if (e && e.parameter && e.parameter.action === 'publicCMS') {
+      return out(publicCMS());
+    }
+    return out({
+      ok:true,
+      service:'Shivsagar Krushi Seva Kendra & Hardware API',
+      version:'2.0',
+      timestamp:new Date().toISOString()
+    });
+  } catch (err) {
+    return out({ok:false,message:err.message});
+  }
 }
-function api(action,p){try{setupDatabase();p=p||{};switch(action){
-case'login':return login_(p);case'bootstrap':return bootstrap_(p);case'saveProduct':return saveProduct_(p);case'deleteProduct':return deleteById_('Products',p.id,p.token);case'saveCustomer':return saveCustomer_(p);case'saveSupplier':return saveSupplier_(p);case'saveExpense':return saveExpense_(p);case'saveUser':return saveUser_(p);case'toggleUser':return toggleUser_(p);case'saveSettings':return saveSettings_(p);case'createSale':return createSale_(p);case'createPurchase':return createPurchase_(p);case'saleReturn':return saleReturn_(p);case'purchaseReturn':return purchaseReturn_(p);case'recordPayment':return recordPayment_(p);case'stockAdjust':return stockAdjust_(p);case'reports':return reports_();case'ledger':return ledger_(p);case'gstReport':return gstReport_(p);case'exportData':return exportData_(p);case'clearBusinessData':return clearBusinessData_(p);case'invoicePdf':return invoicePdf_(p);case'receiptPdf':return receiptPdf_(p);default:throw new Error('Unknown action: '+action)}}catch(e){return{ok:false,error:e.message}}}
-function login_(p){const u=getRows('Users').find(x=>String(x.username).toLowerCase()===String(p.username||'').toLowerCase()&&String(x.active)==='true');if(!u||u.passwordHash!==hash_(String(p.password||'')))return{ok:false,error:'Invalid username or password.'};const t=Utilities.getUuid();CacheService.getScriptCache().put('AUTH_'+t,JSON.stringify({username:u.username,name:u.name,role:u.role}),21600);audit_(u,'LOGIN','Auth','','Successful login');return{ok:true,token:t,user:{name:u.name,username:u.username,role:u.role}}}
-function auth_(t){const s=CacheService.getScriptCache().get('AUTH_'+t);if(!s)throw new Error('Session expired. Please login again.');return JSON.parse(s)}
-function bootstrap_(p){const u=auth_(p.token);return{ok:true,user:u,settings:settings_(),products:getRows('Products').filter(x=>String(x.active)!=='false'),customers:getRows('Customers').filter(x=>String(x.active)!=='false'),suppliers:getRows('Suppliers').filter(x=>String(x.active)!=='false'),users:getRows('Users'),sales:getRows('Sales'),saleItems:getRows('SaleItems'),purchases:getRows('Purchases'),purchaseItems:getRows('PurchaseItems'),salesReturns:getRows('SalesReturns'),purchaseReturns:getRows('PurchaseReturns'),payments:getRows('Payments'),adjustments:getRows('StockAdjustments'),expenses:getRows('Expenses')}}
-function saveProduct_(p){const u=auth_(p.token);requireRole_(u,['Administrator','Manager','Inventory Staff']);const o=p.data;o.id=o.id||uid();o.active=true;o.createdAt=o.createdAt||now_();upsert_('Products',o);audit_(u,'SAVE','Product',o.id,o.name);return{ok:true}}
-function saveCustomer_(p){const u=auth_(p.token);requireRole_(u,['Administrator','Manager','Billing Staff']);const o=p.data;o.id=o.id||uid();o.active=true;o.createdAt=o.createdAt||now_();o.credit=Number(o.credit||0);o.creditLimit=Number(o.creditLimit||0);upsert_('Customers',o);return{ok:true}}
-function saveSupplier_(p){const u=auth_(p.token);requireRole_(u,['Administrator','Manager','Inventory Staff']);const o=p.data;o.id=o.id||uid();o.active=true;o.createdAt=o.createdAt||now_();o.payable=Number(o.payable||0);upsert_('Suppliers',o);return{ok:true}}
-function saveExpense_(p){const u=auth_(p.token);requireRole_(u,['Administrator','Manager']);const o=p.data;o.id=uid();o.createdBy=u.username;o.createdAt=now_();appendRow('Expenses',o);audit_(u,'CREATE','Expense',o.id,o.description);return{ok:true}}
-function saveUser_(p){const u=auth_(p.token);requireRole_(u,['Administrator']);const d=p.data;if(!d.username||!d.password)throw new Error('Username and password required.');if(getRows('Users').some(x=>String(x.username).toLowerCase()===String(d.username).toLowerCase()))throw new Error('Username already exists.');appendRow('Users',{id:uid(),name:d.name,username:d.username,passwordHash:hash_(d.password),role:d.role,active:true,createdAt:now_()});return{ok:true}}
-function toggleUser_(p){const u=auth_(p.token);requireRole_(u,['Administrator']);const x=getRows('Users').find(x=>String(x.id)===String(p.id));if(!x)throw new Error('User not found.');x.active=String(x.active)==='true'?'false':'true';upsert_('Users',x);return{ok:true}}
-function saveSettings_(p){const u=auth_(p.token);requireRole_(u,['Administrator']);Object.keys(p.settings||{}).forEach(k=>upsert_('Settings',{key:k,value:String(p.settings[k])}));return{ok:true}}
-function createSale_(p){const u=auth_(p.token);requireRole_(u,['Administrator','Manager','Billing Staff']);if(!p.items?.length)throw new Error('No bill items.');const cust=getRows('Customers').find(x=>String(x.id)===String(p.customerId));if(!cust)throw new Error('Customer not found.');const products=getRows('Products');let sub=0,tax=0,lines=[];p.items.forEach(it=>{const prod=products.find(x=>String(x.id)===String(it.productId));if(!prod)throw new Error('Product not found.');const q=Number(it.qty),r=Number(prod.rate),g=Number(prod.gst||0);if(q<=0||Number(prod.stock)<q)throw new Error('Insufficient stock: '+prod.name);const l=q*r,t=l*g/100;sub+=l;tax+=t;prod.stock=Number(prod.stock)-q;upsert_('Products',prod);lines.push({id:uid(),productId:prod.id,sku:prod.sku,name:prod.name,qty:q,rate:r,gst:g,tax:t,lineTotal:l+t})});const sale={id:uid(),invoice:invoiceNo_(),date:date_(),time:time_(),customerId:cust.id,customer:cust.name,payment:p.payment||'Cash',subtotal:sub,tax,total:sub+tax,createdBy:u.username,createdAt:now_()};appendRow('Sales',sale);lines.forEach(x=>{x.saleId=sale.id;appendRow('SaleItems',x)});if(sale.payment==='Credit'){cust.credit=Number(cust.credit||0)+sale.total;upsert_('Customers',cust)}audit_(u,'CREATE','Sale',sale.id,sale.invoice);return{ok:true,sale,items:lines}}
-function createPurchase_(p){const u=auth_(p.token);requireRole_(u,['Administrator','Manager','Inventory Staff']);if(!p.items?.length)throw new Error('No purchase items.');const sup=getRows('Suppliers').find(x=>String(x.id)===String(p.supplierId));if(!sup)throw new Error('Supplier not found.');const products=getRows('Products');let sub=0,tax=0,lines=[];p.items.forEach(it=>{const prod=products.find(x=>String(x.id)===String(it.productId));if(!prod)throw new Error('Product not found.');const q=Number(it.qty),r=Number(it.rate),g=Number(it.gst||0),l=q*r,t=l*g/100;sub+=l;tax+=t;prod.stock=Number(prod.stock)+q;prod.purchaseRate=r;upsert_('Products',prod);lines.push({id:uid(),productId:prod.id,sku:prod.sku,name:prod.name,qty:q,rate:r,gst:g,tax:t,lineTotal:l+t})});const pur={id:uid(),invoice:p.invoice||purchaseNo_(),date:p.date||date_(),supplierId:sup.id,supplier:sup.name,payment:p.payment||'Credit',subtotal:sub,tax,total:sub+tax,createdBy:u.username,createdAt:now_()};appendRow('Purchases',pur);lines.forEach(x=>{x.purchaseId=pur.id;appendRow('PurchaseItems',x)});if(pur.payment==='Credit'){sup.payable=Number(sup.payable||0)+pur.total;upsert_('Suppliers',sup)}audit_(u,'CREATE','Purchase',pur.id,pur.invoice);return{ok:true,purchase:pur,items:lines}}
-function saleReturn_(p){const u=auth_(p.token);requireRole_(u,['Administrator','Manager','Billing Staff']);const sale=getRows('Sales').find(x=>String(x.id)===String(p.saleId));if(!sale)throw new Error('Sale not found.');const orig=getRows('SaleItems').filter(x=>String(x.saleId)===String(sale.id));if(!p.items?.length)throw new Error('Select return items.');const products=getRows('Products');let sub=0,tax=0,lines=[];p.items.forEach(it=>{const oi=orig.find(x=>String(x.id)===String(it.saleItemId));if(!oi)throw new Error('Sale item not found.');const q=Number(it.qty),max=Number(oi.qty);if(q<=0||q>max)throw new Error('Invalid return quantity for '+oi.name);const g=Number(oi.gst||0),l=q*Number(oi.rate),t=l*g/100;sub+=l;tax+=t;const prod=products.find(x=>String(x.id)===String(oi.productId));prod.stock=Number(prod.stock)+q;upsert_('Products',prod);lines.push({id:uid(),saleItemId:oi.id,productId:oi.productId,sku:oi.sku,name:oi.name,qty:q,rate:oi.rate,gst:g,tax:t,lineTotal:l+t})});const ret={id:uid(),returnNo:'SR-'+Utilities.formatDate(new Date(),TZ,'yyyyMMdd-HHmmss'),date:date_(),saleId:sale.id,invoice:sale.invoice,customerId:sale.customerId,customer:sale.customer,refundMode:p.refundMode||'Credit',subtotal:sub,tax,total:sub+tax,createdBy:u.username,createdAt:now_()};appendRow('SalesReturns',ret);lines.forEach(x=>{x.returnId=ret.id;appendRow('SalesReturnItems',x)});const cust=getRows('Customers').find(x=>String(x.id)===String(sale.customerId));if(cust){if(sale.payment==='Credit'||ret.refundMode==='Credit'){cust.credit=Math.max(0,Number(cust.credit||0)-ret.total);upsert_('Customers',cust)}}audit_(u,'RETURN','Sale',sale.id,ret.returnNo);return{ok:true,return:ret}}
-function purchaseReturn_(p){const u=auth_(p.token);requireRole_(u,['Administrator','Manager','Inventory Staff']);const pur=getRows('Purchases').find(x=>String(x.id)===String(p.purchaseId));if(!pur)throw new Error('Purchase not found.');const orig=getRows('PurchaseItems').filter(x=>String(x.purchaseId)===String(pur.id));const products=getRows('Products');let sub=0,tax=0,lines=[];p.items.forEach(it=>{const oi=orig.find(x=>String(x.id)===String(it.purchaseItemId));if(!oi)throw new Error('Purchase item not found.');const q=Number(it.qty);if(q<=0||q>Number(oi.qty))throw new Error('Invalid return quantity.');const prod=products.find(x=>String(x.id)===String(oi.productId));if(Number(prod.stock)<q)throw new Error('Insufficient stock to return '+prod.name);const l=q*Number(oi.rate),t=l*Number(oi.gst||0)/100;sub+=l;tax+=t;prod.stock=Number(prod.stock)-q;upsert_('Products',prod);lines.push({id:uid(),purchaseItemId:oi.id,productId:oi.productId,sku:oi.sku,name:oi.name,qty:q,rate:oi.rate,gst:oi.gst,tax:t,lineTotal:l+t})});const ret={id:uid(),returnNo:'PR-'+Utilities.formatDate(new Date(),TZ,'yyyyMMdd-HHmmss'),date:date_(),purchaseId:pur.id,invoice:pur.invoice,supplierId:pur.supplierId,supplier:pur.supplier,paymentMode:p.paymentMode||'Credit',subtotal:sub,tax,total:sub+tax,createdBy:u.username,createdAt:now_()};appendRow('PurchaseReturns',ret);lines.forEach(x=>{x.returnId=ret.id;appendRow('PurchaseReturnItems',x)});const sup=getRows('Suppliers').find(x=>String(x.id)===String(pur.supplierId));if(sup&&pur.payment==='Credit'){sup.payable=Math.max(0,Number(sup.payable||0)-ret.total);upsert_('Suppliers',sup)}return{ok:true,return:ret}}
-function recordPayment_(p){const u=auth_(p.token);requireRole_(u,['Administrator','Manager','Billing Staff']);const amt=Number(p.amount);if(amt<=0)throw new Error('Amount must be positive.');if(p.type==='Customer'){const c=getRows('Customers').find(x=>String(x.id)===String(p.partyId));if(!c)throw new Error('Customer not found.');c.credit=Math.max(0,Number(c.credit||0)-amt);upsert_('Customers',c)}else{requireRole_(u,['Administrator','Manager','Inventory Staff']);const s=getRows('Suppliers').find(x=>String(x.id)===String(p.partyId));if(!s)throw new Error('Supplier not found.');s.payable=Math.max(0,Number(s.payable||0)-amt);upsert_('Suppliers',s)}const o={id:uid(),date:p.date||date_(),type:p.type,partyId:p.partyId,party:p.party,mode:p.mode||'Cash',reference:p.reference||'',amount:amt,notes:p.notes||'',createdBy:u.username,createdAt:now_()};appendRow('Payments',o);return{ok:true}}
-function stockAdjust_(p){const u=auth_(p.token);requireRole_(u,['Administrator','Manager','Inventory Staff']);const prod=getRows('Products').find(x=>String(x.id)===String(p.productId));if(!prod)throw new Error('Product not found.');const q=Number(p.qty);if(q<=0)throw new Error('Quantity must be positive.');if(p.type==='OUT'&&Number(prod.stock)<q)throw new Error('Insufficient stock.');prod.stock=Number(prod.stock)+(p.type==='IN'?q:-q);upsert_('Products',prod);appendRow('StockAdjustments',{id:uid(),date:p.date||date_(),productId:prod.id,sku:prod.sku,product:prod.name,type:p.type,qty:q,reason:p.reason||'',reference:p.reference||'',createdBy:u.username,createdAt:now_()});return{ok:true}}
-function reports_(){const products=getRows('Products'),sales=getRows('Sales'),purchases=getRows('Purchases'),expenses=getRows('Expenses'),customers=getRows('Customers'),suppliers=getRows('Suppliers'),sr=getRows('SalesReturns'),pr=getRows('PurchaseReturns');return{products,sales,purchases,expenses,customers,suppliers,salesReturns:sr,purchaseReturns:pr,summary:{sales:sum_(sales,'total'),purchases:sum_(purchases,'total'),expenses:sum_(expenses,'amount'),stock:products.reduce((a,x)=>a+Number(x.stock||0)*Number(x.purchaseRate||x.rate||0),0),credit:sum_(customers,'credit'),payable:sum_(suppliers,'payable'),salesReturns:sum_(sr,'total'),purchaseReturns:sum_(pr,'total')}}}
-function ledger_(p){auth_(p.token);if(p.type==='Customer'){const c=getRows('Customers').find(x=>String(x.id)===String(p.id));const sales=getRows('Sales').filter(x=>String(x.customerId)===String(p.id)),payments=getRows('Payments').filter(x=>x.type==='Customer'&&String(x.partyId)===String(p.id)),returns=getRows('SalesReturns').filter(x=>String(x.customerId)===String(p.id));return{party:c,transactions:[...sales.map(x=>({date:x.date,kind:'Sale',ref:x.invoice,debit:x.total,credit:0})),...returns.map(x=>({date:x.date,kind:'Sales Return',ref:x.returnNo,debit:0,credit:x.total})),...payments.map(x=>({date:x.date,kind:'Payment',ref:x.reference||x.id,debit:0,credit:x.amount}))].sort((a,b)=>String(a.date).localeCompare(String(b.date)))}}const s=getRows('Suppliers').find(x=>String(x.id)===String(p.id));const pur=getRows('Purchases').filter(x=>String(x.supplierId)===String(p.id)),payments=getRows('Payments').filter(x=>x.type==='Supplier'&&String(x.partyId)===String(p.id)),returns=getRows('PurchaseReturns').filter(x=>String(x.supplierId)===String(p.id));return{party:s,transactions:[...pur.map(x=>({date:x.date,kind:'Purchase',ref:x.invoice,debit:x.total,credit:0})),...returns.map(x=>({date:x.date,kind:'Purchase Return',ref:x.returnNo,debit:0,credit:x.total})),...payments.map(x=>({date:x.date,kind:'Payment',ref:x.reference||x.id,debit:0,credit:x.amount}))].sort((a,b)=>String(a.date).localeCompare(String(b.date)))} }
-function gstReport_(p){auth_(p.token);const sales=getRows('Sales'),purchases=getRows('Purchases'),sr=getRows('SalesReturns'),pr=getRows('PurchaseReturns');const by=(arr)=>{const m={};arr.forEach(x=>{const g=Number(x.gst||0);m[g]=(m[g]||0)+Number(x.tax||0)});return m};return{output:by(getRows('SaleItems')),input:by(getRows('PurchaseItems')),salesReturns:sum_(sr,'tax'),purchaseReturns:sum_(pr,'tax'),salesTotal:sum_(sales,'total'),purchaseTotal:sum_(purchases,'total')}}
-function exportData_(p){const u=auth_(p.token);requireRole_(u,['Administrator']);const out={};Object.keys(SHEETS).forEach(n=>out[n]=getRows(n));return{ok:true,json:JSON.stringify(out)}}
-function clearBusinessData_(p){const u=auth_(p.token);requireRole_(u,['Administrator']);['Products','Customers','Suppliers','Sales','SaleItems','Purchases','PurchaseItems','SalesReturns','SalesReturnItems','PurchaseReturns','PurchaseReturnItems','Payments','StockAdjustments','Expenses','AuditLog'].forEach(n=>{const sh=sheet_(n);if(sh.getLastRow()>1)sh.getRange(2,1,sh.getLastRow()-1,sh.getLastColumn()).clearContent()});return{ok:true}}
-function invoicePdf_(p){const u=auth_(p.token);const sale=getRows('Sales').find(x=>String(x.id)===String(p.saleId));if(!sale)throw new Error('Invoice not found.');const items=getRows('SaleItems').filter(x=>String(x.saleId)===String(sale.id));return pdfBlob_('Invoice '+sale.invoice,invoiceHtml_(sale,items,settings_()))}
-function receiptPdf_(p){const u=auth_(p.token);const pay=getRows('Payments').find(x=>String(x.id)===String(p.paymentId));if(!pay)throw new Error('Receipt not found.');return pdfBlob_('Payment Receipt',receiptHtml_(pay,settings_()))}
-function pdfBlob_(name,html){const b=Utilities.newBlob(html,'text/html',name+'.html').getAs('application/pdf');return{ok:true,name:name+'.pdf',mime:'application/pdf',base64:Utilities.base64Encode(b.getBytes())}}
-function invoiceHtml_(s,items,set){return`<html><body style="font-family:Arial;padding:28px"><h2>${esc_(set.shopName)}</h2><p>${esc_(set.address)}<br>Phone: ${esc_(set.phone)} | GSTIN: ${esc_(set.gstin)}</p><hr><h3>Tax Invoice: ${esc_(s.invoice)}</h3><p>Date: ${esc_(s.date)} | Customer: ${esc_(s.customer)} | Payment: ${esc_(s.payment)}</p><table width="100%" border="1" cellspacing="0" cellpadding="6"><tr><th>Item</th><th>Qty</th><th>Rate</th><th>GST</th><th>Total</th></tr>${items.map(i=>`<tr><td>${esc_(i.name)}</td><td>${i.qty}</td><td>${i.rate}</td><td>${i.gst}%</td><td>${i.lineTotal}</td></tr>`).join('')}</table><h3 style="text-align:right">Subtotal: ${s.subtotal}<br>Tax: ${s.tax}<br>Total: ${s.total}</h3><p>Thank you for your business.</p></body></html>`}
-function receiptHtml_(p,set){return`<html><body style="font-family:Arial;padding:28px"><h2>${esc_(set.shopName)}</h2><h3>Payment Receipt</h3><p>Date: ${p.date}<br>Received from: ${esc_(p.party)}<br>Type: ${p.type}<br>Mode: ${p.mode}<br>Reference: ${esc_(p.reference)}</p><h2>Amount: ${p.amount}</h2><p>${esc_(p.notes)}</p></body></html>`}
-function requireRole_(u,rs){if(!rs.includes(u.role))throw new Error('Access denied.')}
-function settings_(){const o={};getRows('Settings').forEach(x=>o[x.key]=x.value);return o}
-function sheet_(n){return SpreadsheetApp.openById(SS_ID).getSheetByName(n)}
-function getRows(n){const sh=sheet_(n);if(!sh||sh.getLastRow()<2)return[];return objects_(n)}
-function objects_(n){const sh=sheet_(n),v=sh.getDataRange().getValues();if(v.length<2)return[];const h=v[0];return v.slice(1).filter(r=>r.some(x=>x!=='')).map(r=>Object.fromEntries(h.map((k,i)=>[k,r[i]])))}
-function appendRow(n,o){const h=SHEETS[n];sheet_(n).appendRow(h.map(k=>o[k]!==undefined?o[k]:''))}
-function upsert_(n,o){const sh=sheet_(n),rows=getRows(n),i=rows.findIndex(x=>String(x.id||x.key)===String(o.id||o.key));if(i<0)appendRow(n,o);else sh.getRange(i+2,1,1,SHEETS[n].length).setValues([SHEETS[n].map(k=>o[k]!==undefined?o[k]:'')])}
-function deleteById_(n,id,t){const u=auth_(t);requireRole_(u,['Administrator','Manager']);const rows=getRows(n),i=rows.findIndex(x=>String(x.id)===String(id));if(i<0)throw new Error('Record not found.');sheet_(n).deleteRow(i+2);return{ok:true}}
-function audit_(u,a,e,id,d){appendRow('AuditLog',{id:uid(),timestamp:now_(),username:u.username,role:u.role,action:a,entity:e,entityId:id,details:d})}
-function invoiceNo_(){const s=settings_();const p=s.invoicePrefix||'SSK';return p+'-'+Utilities.formatDate(new Date(),TZ,'yyyyMMdd-HHmmss')}
-function purchaseNo_(){return'PUR-'+Utilities.formatDate(new Date(),TZ,'yyyyMMdd-HHmmss')}
-function uid(){return Utilities.getUuid()}function now_(){return Utilities.formatDate(new Date(),TZ,'yyyy-MM-dd HH:mm:ss')}function date_(){return Utilities.formatDate(new Date(),TZ,'yyyy-MM-dd')}function time_(){return Utilities.formatDate(new Date(),TZ,'HH:mm:ss')}function hash_(s){return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,s,Utilities.Charset.UTF_8))}function sum_(a,k){return a.reduce((x,y)=>x+Number(y[k]||0),0)}function esc_(x){return String(x??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+
+function doPost(e) {
+  try {
+    var body = e && e.postData && e.postData.contents
+      ? JSON.parse(e.postData.contents)
+      : {};
+    return out(route(body));
+  } catch (err) {
+    return out({ok:false,message:err.message,stack:err.stack});
+  }
+}
+
+function route(req) {
+  req = req || {};
+  var action = String(req.action || '').trim();
+  var p = req.payload || {};
+
+  switch (action) {
+    case 'setup': return setupDatabase();
+    case 'login': return login(p);
+    case 'logout': return logout(req);
+    case 'me': return me(req);
+
+    case 'list': return list(req);
+    case 'get': return getOne(req);
+    case 'create': return create(req);
+    case 'update': return update(req);
+    case 'delete': return deleteRecord(req);
+
+    case 'dashboard': return dashboard(req);
+    case 'publicCMS': return publicCMS();
+    case 'ledger': return ledger(req);
+    case 'dayEnd': return dayEnd(req);
+    case 'stockSummary': return stockSummary(req);
+    case 'toggleModule': return toggleModule(req);
+
+    default:
+      throw new Error('Unknown action: ' + action);
+  }
+}
+
+/* ---------- DATABASE ---------- */
+
+function db() {
+  if (SS_ID === 'YOUR_SPREADSHEET_ID') {
+    throw new Error('Set SS_ID in Code.gs before using the API.');
+  }
+  return SpreadsheetApp.openById(SS_ID);
+}
+
+function setupDatabase() {
+  var ss = db();
+
+  Object.keys(SCHEMAS).forEach(function(name) {
+    var sheet = ss.getSheetByName(name);
+    if (!sheet) sheet = ss.insertSheet(name);
+
+    if (sheet.getLastRow() === 0) {
+      sheet.appendRow(SCHEMAS[name]);
+      sheet.setFrozenRows(1);
+    } else {
+      var headers = getHeaders_(sheet);
+      if (headers.length === 0) sheet.appendRow(SCHEMAS[name]);
+    }
+  });
+
+  seedCMS_(ss);
+
+  return {
+    ok:true,
+    message:'Database initialized successfully.',
+    sheets:Object.keys(SCHEMAS)
+  };
+}
+
+function seedCMS_(ss) {
+  var business = ss.getSheetByName('BusinessInfo');
+  if (business && business.getLastRow() === 1) {
+    business.appendRow([
+      'BUSINESS-001',
+      'Shivsagar Krushi Seva Kendra & Hardware',
+      'Agriculture, Hardware & Farm Solutions',
+      '', '', '', '', '', '', '', '',
+      '', '', '', 'true'
+    ]);
+  }
+
+  var hero = ss.getSheetByName('HeroSlides');
+  if (hero && hero.getLastRow() === 1) {
+    hero.appendRow([
+      'HERO-001',
+      'Welcome to Shivsagar Krushi Seva Kendra & Hardware',
+      'Quality products for farmers and businesses',
+      'Manage your website directly from the Admin Portal.',
+      '', 'Explore', '#', 'true', 1
+    ]);
+  }
+
+  var content = ss.getSheetByName('SiteContent');
+  if (content && content.getLastRow() === 1) {
+    content.appendRow([
+      'HOME-001',
+      'home',
+      'Welcome to Shivsagar Krushi Seva Kendra & Hardware',
+      '',
+      'Agricultural, hardware and farm solution products.',
+      '', '', '', 'true', 1
+    ]);
+  }
+}
+
+function getHeaders_(sheet) {
+  if (!sheet || sheet.getLastColumn() === 0) return [];
+  return sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0]
+    .map(function(x){ return String(x).trim(); });
+}
+
+function read(entity) {
+  entity = entityName(entity);
+  if (entity === '__dashboard') return [];
+
+  var sheet = db().getSheetByName(entity);
+  if (!sheet) throw new Error('Sheet not found: ' + entity);
+
+  var values = sheet.getDataRange().getValues();
+  if (values.length <= 1) return [];
+
+  var headers = values[0].map(String);
+
+  return values.slice(1).map(function(row) {
+    var obj = {};
+    headers.forEach(function(h,i) {
+      obj[h] = normalizeValue_(row[i]);
+    });
+    return obj;
+  });
+}
+
+function append(entity, record) {
+  entity = entityName(entity);
+  var sheet = db().getSheetByName(entity);
+  if (!sheet) throw new Error('Sheet not found: ' + entity);
+
+  var headers = getHeaders_(sheet);
+  sheet.appendRow(headers.map(function(h) {
+    return record[h] !== undefined ? record[h] : '';
+  }));
+}
+
+function replaceRow_(entity, id, record) {
+  entity = entityName(entity);
+  var sheet = db().getSheetByName(entity);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+
+  var idCol = headers.indexOf('id');
+  if (idCol < 0) throw new Error('Entity has no id field: ' + entity);
+
+  for (var r=1; r<values.length; r++) {
+    if (String(values[r][idCol]) === String(id)) {
+      sheet.getRange(r+1,1,1,headers.length).setValues([
+        headers.map(function(h){
+          return record[h] !== undefined ? record[h] : '';
+        })
+      ]);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function removeRow_(entity,id) {
+  entity = entityName(entity);
+  var sheet = db().getSheetByName(entity);
+  var values = sheet.getDataRange().getValues();
+  var headers = values[0];
+  var idCol = headers.indexOf('id');
+
+  if (idCol < 0) throw new Error('Entity has no id field: ' + entity);
+
+  for (var r=1; r<values.length; r++) {
+    if (String(values[r][idCol]) === String(id)) {
+      sheet.deleteRow(r+1);
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/* ---------- ENTITY RESOLUTION ---------- */
+
+function entityName(input) {
+  var n = input;
+
+  if (n && typeof n === 'object') {
+    n = n.entity || n.entityName || n.name;
+  }
+
+  if (n === undefined || n === null || String(n).trim() === '') {
+    throw new Error(
+      'Entity is required. Example: {entity:"Products"}'
+    );
+  }
+
+  n = String(n).trim();
+
+  if (SCHEMAS[n]) return n;
+
+  var key = n.toLowerCase()
+    .replace(/[\s_-]/g,'');
+
+  if (ENTITY_ALIASES[key]) return ENTITY_ALIASES[key];
+
+  if (key === 'dashboard') return '__dashboard';
+
+  throw new Error(
+    'Invalid entity: ' + n +
+    '. Valid entities: ' +
+    Object.keys(SCHEMAS).join(', ')
+  );
+}
+
+/* ---------- AUTH ---------- */
+
+function createInitialOwner() {
+  var sheet = db().getSheetByName('Users');
+
+  if (sheet.getLastRow() > 1) {
+    return {ok:true,message:'Users already exist. No owner created.'};
+  }
+
+  sheet.appendRow([
+    Utilities.getUuid(),
+    'Owner',
+    'admin',
+    hashPassword_('admin123'),
+    'Administrator',
+    '',
+    true,
+    new Date().toISOString(),
+    new Date().toISOString()
+  ]);
+
+  return {
+    ok:true,
+    message:'Owner created.',
+    username:'admin',
+    temporaryPassword:'admin123'
+  };
+}
+
+function login(p) {
+  p = p || {};
+
+  var username = String(p.username || '').trim();
+  var password = String(p.password || '');
+
+  if (!username || !password) {
+    throw new Error('Username and password are required.');
+  }
+
+  var users = read('Users');
+
+  var user = users.find(function(u) {
+    if (String(u.username) !== username) return false;
+    if (String(u.active).toLowerCase() === 'false') return false;
+
+    return String(u.passwordHash || '') === hashPassword_(password) ||
+           String(u.password || '') === password;
+  });
+
+  if (!user) throw new Error('Invalid username or password.');
+
+  var token = Utilities.getUuid() + '.' + Utilities.getUuid();
+
+  var session = {
+    token:token,
+    userId:user.id,
+    username:user.username,
+    name:user.name,
+    role:user.role,
+    branchId:user.branchId || '',
+    expiresAt:Date.now() + TOKEN_TTL_MS
+  };
+
+  PropertiesService.getScriptProperties()
+    .setProperty('SESSION_' + token, JSON.stringify(session));
+
+  return {
+    ok:true,
+    token:token,
+    user:{
+      id:user.id,
+      username:user.username,
+      name:user.name,
+      role:user.role,
+      branchId:user.branchId || ''
+    }
+  };
+}
+
+function auth_(token) {
+  if (!token) throw new Error('Authentication token required.');
+
+  var raw = PropertiesService.getScriptProperties()
+    .getProperty('SESSION_' + token);
+
+  if (!raw) throw new Error('Invalid or expired session.');
+
+  var session = JSON.parse(raw);
+
+  if (Date.now() > Number(session.expiresAt)) {
+    PropertiesService.getScriptProperties()
+      .deleteProperty('SESSION_' + token);
+    throw new Error('Session expired. Please login again.');
+  }
+
+  return session;
+}
+
+function logout(req) {
+  if (req && req.token) {
+    PropertiesService.getScriptProperties()
+      .deleteProperty('SESSION_' + req.token);
+  }
+
+  return {ok:true,message:'Logged out.'};
+}
+
+function me(req) {
+  var u = auth_(req.token);
+  return {ok:true,user:u};
+}
+
+function hashPassword_(password) {
+  var bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    password,
+    Utilities.Charset.UTF_8
+  );
+
+  return bytes.map(function(b) {
+    var v = b < 0 ? b + 256 : b;
+    return ('0' + v.toString(16)).slice(-2);
+  }).join('');
+}
+
+/* ---------- AUTHORIZED CRUD ---------- */
+
+function list(req) {
+  var u = auth_(req.token);
+  var p = req.payload || {};
+  var entity = entityName(p.entity || p.entityName);
+
+  if (entity === '__dashboard') return dashboard(req);
+
+  authorize_(u,entity,'READ');
+
+  var rows = read(entity);
+
+  if (u.branchId && hasField_(entity,'branchId')) {
+    rows = rows.filter(function(r) {
+      return !r.branchId || String(r.branchId) === String(u.branchId);
+    });
+  }
+
+  return {ok:true,rows:rows};
+}
+
+function getOne(req) {
+  var u = auth_(req.token);
+  var p = req.payload || {};
+  var entity = entityName(p.entity || p.entityName);
+
+  authorize_(u,entity,'READ');
+
+  var rows = read(entity);
+  var id = p.id || p.recordId;
+
+  var row = rows.find(function(r) {
+    return String(r.id) === String(id);
+  });
+
+  if (!row) throw new Error('Record not found.');
+
+  return {ok:true,row:row};
+}
+
+function create(req) {
+  var u = auth_(req.token);
+  var p = req.payload || {};
+  var entity = entityName(p.entity || p.entityName);
+
+  if (entity === '__dashboard') {
+    throw new Error('Dashboard is read-only.');
+  }
+
+  authorize_(u,entity,'CREATE');
+
+  var data = p.data || {};
+  var record = {};
+
+  SCHEMAS[entity].forEach(function(field) {
+    record[field] = data[field] !== undefined ? data[field] : '';
+  });
+
+  if (hasField_(entity,'id')) {
+    record.id = data.id || Utilities.getUuid();
+  }
+
+  if (hasField_(entity,'createdAt')) {
+    record.createdAt = data.createdAt || new Date().toISOString();
+  }
+
+  if (hasField_(entity,'updatedAt')) {
+    record.updatedAt = new Date().toISOString();
+  }
+
+  if (hasField_(entity,'createdBy')) {
+    record.createdBy = u.username;
+  }
+
+  if (hasField_(entity,'branchId') && !record.branchId) {
+    record.branchId = u.branchId || '';
+  }
+
+  append(entity,record);
+
+  audit_(
+    u,
+    'CREATE',
+    entity,
+    record.id || '',
+    record
+  );
+
+  return {ok:true,row:record};
+}
+
+function update(req) {
+  var u = auth_(req.token);
+  var p = req.payload || {};
+  var entity = entityName(p.entity || p.entityName);
+
+  authorize_(u,entity,'UPDATE');
+
+  var id = p.id || p.recordId;
+  if (!id) throw new Error('Record id is required.');
+
+  var rows = read(entity);
+  var old = rows.find(function(r) {
+    return String(r.id) === String(id);
+  });
+
+  if (!old) throw new Error('Record not found.');
+
+  if (u.branchId && old.branchId &&
+      String(old.branchId) !== String(u.branchId)) {
+    throw new Error('Access denied for this branch.');
+  }
+
+  var data = p.data || {};
+  var record = {};
+
+  SCHEMAS[entity].forEach(function(field) {
+    if (data[field] !== undefined) {
+      record[field] = data[field];
+    } else {
+      record[field] = old[field] !== undefined ? old[field] : '';
+    }
+  });
+
+  if (hasField_(entity,'updatedAt')) {
+    record.updatedAt = new Date().toISOString();
+  }
+
+  if (replaceRow_(entity,id,record) === false) {
+    throw new Error('Unable to update record.');
+  }
+
+  audit_(u,'UPDATE',entity,id,{
+    before:old,
+    after:record
+  });
+
+  return {ok:true,row:record};
+}
+
+function deleteRecord(req) {
+  var u = auth_(req.token);
+  var p = req.payload || {};
+  var entity = entityName(p.entity || p.entityName);
+
+  authorize_(u,entity,'DELETE');
+
+  var id = p.id || p.recordId;
+  if (!id) throw new Error('Record id is required.');
+
+  var rows = read(entity);
+  var old = rows.find(function(r) {
+    return String(r.id) === String(id);
+  });
+
+  if (!old) throw new Error('Record not found.');
+
+  if (u.branchId && old.branchId &&
+      String(old.branchId) !== String(u.branchId)) {
+    throw new Error('Access denied for this branch.');
+  }
+
+  if (!removeRow_(entity,id)) {
+    throw new Error('Unable to delete record.');
+  }
+
+  audit_(u,'DELETE',entity,id,old);
+
+  return {ok:true,message:'Record deleted successfully.'};
+}
+
+/* ---------- PERMISSIONS ---------- */
+
+function authorize_(u,entity,operation) {
+  var role = String(u.role || '').toLowerCase();
+
+  if (role === 'administrator' ||
+      role === 'admin' ||
+      role === 'owner') {
+    return true;
+  }
+
+  var readOnly = [
+    'dashboard','Products','Customers','Suppliers',
+    'Sales','Purchases','Payments','Expenses',
+    'SiteContent','HeroSlides','SiteImages',
+    'SiteProducts','SiteServices','BusinessInfo',
+    'NavLinks','ContactInfo'
+  ];
+
+  if (operation === 'READ' && readOnly.indexOf(entity) >= 0) {
+    return true;
+  }
+
+  throw new Error(
+    'Permission denied: ' + operation + ' on ' + entity
+  );
+}
+
+function hasField_(entity,field) {
+  return SCHEMAS[entity] &&
+    SCHEMAS[entity].indexOf(field) >= 0;
+}
+
+/* ---------- DASHBOARD ---------- */
+
+function dashboard(req) {
+  var u = auth_(req.token);
+
+  return {
+    ok:true,
+    summary:{
+      products:read('Products').length,
+      customers:read('Customers').length,
+      suppliers:read('Suppliers').length,
+      sales:read('Sales').length,
+      purchases:read('Purchases').length,
+      payments:read('Payments').length,
+      expenses:read('Expenses').length,
+      lowStock:read('Products').filter(function(p) {
+        var stock = Number(p.stock || 0);
+        var reorder = Number(p.reorderLevel || 0);
+        return stock <= reorder;
+      }).length
+    }
+  };
+}
+
+/* ---------- WEBSITE CMS ---------- */
+
+function publicCMS() {
+  var result = {ok:true};
+
+  result.siteContent = read('SiteContent')
+    .filter(activeRow_)
+    .sort(sortOrder_);
+
+  result.heroSlides = read('HeroSlides')
+    .filter(activeRow_)
+    .sort(sortOrder_);
+
+  result.siteImages = read('SiteImages')
+    .filter(activeRow_)
+    .sort(sortOrder_);
+
+  result.siteProducts = read('SiteProducts')
+    .filter(activeRow_)
+    .sort(sortOrder_);
+
+  result.siteServices = read('SiteServices')
+    .filter(activeRow_)
+    .sort(sortOrder_);
+
+  result.businessInfo = read('BusinessInfo')
+    .filter(activeRow_);
+
+  result.navLinks = read('NavLinks')
+    .filter(activeRow_)
+    .sort(sortOrder_);
+
+  result.contactInfo = read('ContactInfo')
+    .filter(activeRow_)
+    .sort(sortOrder_);
+
+  return result;
+}
+
+function activeRow_(row) {
+  return String(row.active).toLowerCase() !== 'false';
+}
+
+function sortOrder_(a,b) {
+  return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
+}
+
+/* ---------- LEDGER ---------- */
+
+function ledger(req) {
+  var u = auth_(req.token);
+  var p = req.payload || {};
+  var partyId = p.partyId;
+  var partyType = String(p.partyType || 'customer').toLowerCase();
+
+  if (!partyId) throw new Error('partyId is required.');
+
+  var rows = [];
+  var balance = 0;
+
+  if (partyType === 'customer') {
+    read('Customers').forEach(function(c) {
+      if (String(c.id) === String(partyId)) {
+        balance = Number(c.openingBalance || 0);
+      }
+    });
+
+    read('Sales').forEach(function(s) {
+      if (String(s.customerId) === String(partyId)) {
+        rows.push({
+          date:s.date,
+          reference:s.invoiceNo,
+          debit:Number(s.total || 0),
+          credit:0,
+          type:'Sale'
+        });
+      }
+    });
+
+    read('Payments').forEach(function(x) {
+      if (String(x.partyId) === String(partyId)) {
+        rows.push({
+          date:x.date,
+          reference:x.referenceNo || x.referenceId,
+          debit:0,
+          credit:Number(x.amount || 0),
+          type:'Payment'
+        });
+      }
+    });
+  } else {
+    read('Suppliers').forEach(function(s) {
+      if (String(s.id) === String(partyId)) {
+        balance = Number(s.openingBalance || 0);
+      }
+    });
+
+    read('Purchases').forEach(function(pur) {
+      if (String(pur.supplierId) === String(partyId)) {
+        rows.push({
+          date:pur.date,
+          reference:pur.grnNo,
+          debit:Number(pur.total || 0),
+          credit:0,
+          type:'Purchase'
+        });
+      }
+    });
+
+    read('Payments').forEach(function(x) {
+      if (String(x.partyId) === String(partyId)) {
+        rows.push({
+          date:x.date,
+          reference:x.referenceNo || x.referenceId,
+          debit:0,
+          credit:Number(x.amount || 0),
+          type:'Payment'
+        });
+      }
+    });
+  }
+
+  rows.sort(function(a,b) {
+    return String(a.date).localeCompare(String(b.date));
+  });
+
+  rows.forEach(function(r) {
+    balance += Number(r.debit || 0) - Number(r.credit || 0);
+    r.balance = balance;
+  });
+
+  return {ok:true,rows:rows,closingBalance:balance};
+}
+
+/* ---------- DAY END ---------- */
+
+function dayEnd(req) {
+  var u = auth_(req.token);
+  var p = req.payload || {};
+  var date = p.date || Utilities.formatDate(
+    new Date(),
+    Session.getScriptTimeZone(),
+    'yyyy-MM-dd'
+  );
+
+  function byDate(entity) {
+    return read(entity).filter(function(r) {
+      return String(r.date || '').slice(0,10) === date;
+    });
+  }
+
+  var sales = byDate('Sales');
+  var purchases = byDate('Purchases');
+  var payments = byDate('Payments');
+  var expenses = byDate('Expenses');
+
+  var summary = {
+    date:date,
+    salesCount:sales.length,
+    salesTotal:sum_(sales,'total'),
+    purchasesTotal:sum_(purchases,'total'),
+    receipts:sum_(payments,'amount'),
+    expenses:sum_(expenses,'amount')
+  };
+
+  summary.closingCash =
+    summary.receipts - summary.expenses;
+
+  audit_(
+    u,
+    'DAY_END',
+    'DayEnd',
+    date,
+    summary
+  );
+
+  return {ok:true,summary:summary};
+}
+
+/* ---------- STOCK ---------- */
+
+function stockSummary(req) {
+  var u = auth_(req.token);
+  var products = read('Products');
+
+  var adjustments = read('StockAdjustments');
+
+  return {
+    ok:true,
+    rows:products.map(function(p) {
+      var qty = Number(p.stock || 0);
+
+      adjustments.forEach(function(a) {
+        if (String(a.productId) === String(p.id)) {
+          var n = Number(a.qty || 0);
+          if (String(a.type).toLowerCase() === 'out') {
+            qty -= n;
+          } else {
+            qty += n;
+          }
+        }
+      });
+
+      return {
+        id:p.id,
+        sku:p.sku,
+        name:p.name,
+        stock:qty,
+        reorderLevel:Number(p.reorderLevel || 0),
+        lowStock:qty <= Number(p.reorderLevel || 0)
+      };
+    })
+  };
+}
+
+/* ---------- SETTINGS / MODULE TOGGLES ---------- */
+
+function toggleModule(req) {
+  var u = auth_(req.token);
+
+  if (String(u.role).toLowerCase() !== 'owner' &&
+      String(u.role).toLowerCase() !== 'administrator' &&
+      String(u.role).toLowerCase() !== 'admin') {
+    throw new Error('Only owner/admin can change module settings.');
+  }
+
+  var p = req.payload || {};
+  var moduleName = String(p.module || p.key || '').trim();
+
+  if (!moduleName) throw new Error('Module name is required.');
+
+  var value = p.enabled === true || String(p.enabled).toLowerCase() === 'true';
+
+  var settings = read('Settings');
+  var existing = settings.find(function(s) {
+    return String(s.key) === 'MODULE_' + moduleName;
+  });
+
+  var record = {
+    key:'MODULE_' + moduleName,
+    value:String(value)
+  };
+
+  if (existing) {
+    replaceRow_('Settings',existing.key,record);
+  } else {
+    append('Settings',record);
+  }
+
+  audit_(
+    u,
+    'MODULE_TOGGLE',
+    'Settings',
+    moduleName,
+    {enabled:value}
+  );
+
+  return {
+    ok:true,
+    module:moduleName,
+    enabled:value
+  };
+}
+
+/* ---------- AUDIT ---------- */
+
+function audit_(u,action,entity,entityId,details) {
+  try {
+    var sheet = db().getSheetByName('AuditLog');
+
+    sheet.appendRow([
+      Utilities.getUuid(),
+      new Date().toISOString(),
+      u && u.userId ? u.userId : '',
+      u && u.username ? u.username : '',
+      action,
+      entity,
+      entityId,
+      JSON.stringify(details || {}),
+      u && u.branchId ? u.branchId : ''
+    ]);
+  } catch (err) {
+    console.error('Audit error: ' + err.message);
+  }
+}
+
+/* ---------- HELPERS ---------- */
+
+function sum_(rows,field) {
+  return rows.reduce(function(total,row) {
+    return total + Number(row[field] || 0);
+  },0);
+}
+
+function normalizeValue_(v) {
+  if (v instanceof Date) {
+    return v.toISOString();
+  }
+  return v;
+}
+
+function out(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
