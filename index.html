@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head>
+<head><script src="config/app-config.js"></script>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#176b3a"><title>Shivsagar Krushi Seva Kendra & Hardware</title>
 <style>
@@ -45,7 +45,7 @@
 <div id="modal" class="modal hidden"></div><div id="toast" class="toast hidden"></div>
 
 <script>
-const API_URL="https://script.google.com/macros/s/AKfycbwDZRhYhQV9ov4U4S59F-9gvh4Ca5WD_VRbVeS37W1PBIWU2jHMqlXV1lECWBHotYMZ/exec";let session=localStorage.getItem("ss_session")||"",currentRows=[],currentEntity="";
+const API_URL="YOUR_APPS_SCRIPT_EXEC_URL";let session=localStorage.getItem("ss_session")||"",currentRows=[],currentEntity="";
 let portalDirty=false;
 function confirmAction(message){
   return new Promise(resolve=>{
@@ -78,6 +78,8 @@ window.addEventListener("beforeunload",e=>{
 });
 
 const modules={dashboard:"Dashboard",products:"Products",sales:"Sales",saleItems:"Sale Items",purchases:"Purchases",purchaseItems:"Purchase Items",customers:"Customers",suppliers:"Suppliers",payments:"Payments",expenses:"Expenses",salesReturns:"Sales Returns",purchaseReturns:"Purchase Returns",stock:"Stock Adjustments",reports:"Reports",users:"Users",branches:"Branches",settings:"Settings",audit:"Audit Log"};
+modules.siteContent='Website Content';modules.heroSlides='Hero Slider';modules.siteImages='Website Images';modules.siteProducts='Website Products';modules.siteServices='Website Services';modules.businessInfo='Business Information';modules.operationalControls='Operational Function Controls';modules.navLinks='Navigation Links';modules.contactInfo='Contact Information';
+
 const entityFields={
 products:["id","sku","barcode","name","category","unit","hsn","gstRate","purchasePrice","sellingPrice","mrp","stock","reorderLevel","batch","expiry","supplierId","branchId","active","createdAt","updatedAt"],
 sales:["id","invoiceNo","date","customerId","branchId","subtotal","discount","taxableAmount","gstAmount","total","paymentMode","paidAmount","creditAmount","status","notes","createdBy","createdAt"],
@@ -109,7 +111,7 @@ async function logout(){
   if(!ok)return;
   localStorage.removeItem("ss_session");session="";$("adminPage").classList.add("hidden");$("loginPage").classList.add("hidden");$("public").classList.remove("hidden");window.scrollTo(0,0);toast("You have been logged out")
 }
-function buildMenu(){$("sideMenu").innerHTML=`<button class="side-btn active" onclick="openPOS()">🧾 POS Billing</button>`+Object.entries(modules).map(([k,v])=>`<button class="side-btn" onclick="openModule('${k}')">${v}</button>`).join("")}
+function buildMenu(){$("sideMenu").innerHTML=`<button class="side-btn active" onclick="openPOS()">🧾 POS Billing</button><button class="side-btn" onclick="openDayEnd()">📊 Day-End Closing</button><button class="side-btn" onclick="openStockLedger()">📦 Stock Ledger</button>`+Object.entries(modules).map(([k,v])=>`<button class="side-btn" onclick="openModule('${k}')">${v}</button>`).join("")}
 async function openModule(entity){currentEntity=entity;$("moduleTitle").textContent=modules[entity];$("adminView").innerHTML=`<div class="card"><h3>Loading ${modules[entity]}…</h3><p style="color:var(--muted)">Retrieving current data from Google Sheets.</p></div>`;try{let d=await api("list",{entity});currentRows=d.rows||[];renderModule(entity)}catch(x){$("adminView").innerHTML=`<div class="card"><h3>Unable to load ${modules[entity]}</h3><p>${esc(x.message)}</p></div>`;toast(x.message,true)}}
 function renderModule(e){if(e==="dashboard"){let r=currentRows[0]||{};$("adminView").innerHTML=`<div class="stats">${["products","sales","purchases","customers"].map(k=>`<div class="stat"><span>${k.toUpperCase()}</span><b>${r[k]??0}</b></div>`).join("")}</div><div class="card" style="margin-top:18px"><h3>Live operational database</h3><p style="color:var(--muted)">The dashboard reads current records from Google Sheets through the Apps Script backend.</p></div>`;return}let keys=currentRows[0]?Object.keys(currentRows[0]):[];$("adminView").innerHTML=`<div class="toolbar"><input id="searchBox" placeholder="Search ${modules[e]}…" oninput="filterTable()"><button class="btn primary" onclick="addRecord('${e}')">＋ Add</button><button class="btn outline" onclick="openModule('${e}')">↻ Refresh</button><button class="btn outline" onclick="exportCSV('${e}')">Export Sheet</button><button class="btn outline" onclick="exportPDF('${e}')">Export PDF</button></div><div class="table-wrap"><table id="records"><thead><tr>${keys.map(k=>`<th>${esc(k)}</th>`).join("")}<th>Details</th></tr></thead><tbody>${currentRows.map(r=>`<tr>${keys.map(k=>`<td>${esc(r[k]??"")}</td>`).join("")}<td><button class="btn outline" onclick='viewRecord(${JSON.stringify(r)})'>View</button></td></tr>`).join("")}</tbody></table></div>`}
 
@@ -164,7 +166,76 @@ async function submitPOS(){
 }
 function printInvoice(data){
   const items=data.items||[],w=window.open("","_blank");if(!w)return toast("Popup blocked. Allow popups to print invoice.",true);
-  w.document.write(`<html><head><title>${esc(data.invoiceNo||"Invoice")}</title><style>body{font-family:Arial;padding:25px}.head{display:flex;justify-content:space-between}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #ddd;padding:8px}th{background:#edf6ef}.r{text-align:right}</style></head><body><div class="head"><div><h1>Shivsagar Krushi Seva Kendra & Hardware</h1><p>Agriculture • Hardware • Farm Solutions</p></div><div><b>Invoice</b><br>${esc(data.invoiceNo||"")}</div></div><p>Date: ${esc(data.date||"")}</p><table><tr><th>Product</th><th>Qty</th><th>Rate</th><th>GST</th><th>Total</th></tr>${items.map(i=>`<tr><td>${esc(i.productName)}</td><td>${i.qty}</td><td>₹${Number(i.unitPrice).toFixed(2)}</td><td>${i.gstRate||0}%</td><td>₹${(i.qty*i.unitPrice).toFixed(2)}</td></tr>`).join("")}</table><h2 class="r">Total: ₹${Number(data.total||0).toFixed(2)}</h2><script>window.print()<\\/script></body></html>`);w.document.close();
+  w.document.write(`<html><head><title>${esc(data.invoiceNo||"Invoice")}</title><style>body{font-family:Arial;padding:25px}.head{display:flex;justify-content:space-between}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #ddd;padding:8px}th{background:#edf6ef}.r{text-align:right}</style></head><body><div class="head"><div><h1>Shivsagar Krushi Seva Kendra & Hardware</h1><p>Agriculture • Hardware • Farm Solutions</p></div><div><b>Invoice</b><br>${esc(data.invoiceNo||"")}</div></div><p>Date: ${esc(data.date||"")}</p><table><tr><th>Product</th><th>Qty</th><th>Rate</th><th>GST</th><th>Total</th></tr>${items.map(i=>`<tr><td>${esc(i.productName)}</td><td>${i.qty}</td><td>₹${Number(i.unitPrice).toFixed(2)}</td><td>${i.gstRate||0}%</td><td>₹${(i.qty*i.unitPrice).toFixed(2)}</td></tr>`).join("")}</table><h2 class="r">Total: ₹${Number(data.total||0).toFixed(2)}</h2><script>window.print()<\\/script><style>.cms-slide{display:none;min-height:360px;background-size:cover;background-position:center}.cms-slide.active{display:flex;align-items:center}.cms-slide-content{padding:40px;background:rgba(0,0,0,.45);color:#fff}.cms-product-card,.cms-service-card{padding:18px;border-radius:16px}.cms-product-card img,.cms-service-card img{max-width:100%;border-radius:12px}</style>
+<script>
+/* ===== Shivsagar Dynamic Website CMS ===== */
+const SHIVSAGAR_PUBLIC_CMS = {
+  apiUrl: (typeof SHIVSAGAR_CONFIG !== "undefined" && SHIVSAGAR_CONFIG.APPS_SCRIPT_URL) || window.SHIVSAGAR_API_URL || "",
+  cacheKey: "shivsagar_public_cms_v1"
+};
+async function loadPublicCMS(){
+  try{
+    if(!SHIVSAGAR_PUBLIC_CMS.apiUrl)return;
+    const res=await fetch(SHIVSAGAR_PUBLIC_CMS.apiUrl+"?action=publicCMS",{cache:"no-store"});
+    const data=await res.json();
+    if(!data.ok)return;
+    localStorage.setItem(SHIVSAGAR_PUBLIC_CMS.cacheKey,JSON.stringify(data));
+    applyPublicCMS(data);
+  }catch(e){
+    try{const c=localStorage.getItem(SHIVSAGAR_PUBLIC_CMS.cacheKey);if(c)applyPublicCMS(JSON.parse(c))}catch(_){}
+  }
+}
+function applyPublicCMS(d){
+  const q=(s)=>document.querySelector(s), qa=(s)=>document.querySelectorAll(s);
+  const info=(d.businessInfo||[])[0]||{};
+  const set=(sels,val)=>{if(!val)return;for(const s of sels){const el=q(s);if(el)el.textContent=val}};
+  set([".brand-name",".site-name","[data-business-name]"],info.businessName);
+  set([".brand-tagline",".site-tagline","[data-tagline]"],info.tagline);
+  set(["[data-phone]"],info.phone); set(["[data-email]"],info.email); set(["[data-address]"],info.address);
+  set(["[data-about]"],info.about);
+  if(info.logoUrl){qa("img[data-logo],.site-logo img,.brand-logo img").forEach(i=>i.src=info.logoUrl)}
+  // Generic CMS targets can be used anywhere in the page:
+  (d.siteContent||[]).forEach(x=>{
+    const targets=qa(`[data-cms-section="${CSS.escape(String(x.section||""))}"]`);
+    targets.forEach(el=>{if(x.title)el.querySelectorAll("[data-cms-title]").forEach(n=>n.textContent=x.title);if(x.subtitle)el.querySelectorAll("[data-cms-subtitle]").forEach(n=>n.textContent=x.subtitle);if(x.content)el.querySelectorAll("[data-cms-content]").forEach(n=>n.textContent=x.content);if(x.imageUrl)el.querySelectorAll("img[data-cms-image]").forEach(n=>n.src=x.imageUrl)})
+  });
+  renderCMSHero(d.heroSlides||[]);
+  renderCMSProducts(d.siteProducts||[]);
+  renderCMSServices(d.siteServices||[]);
+  renderCMSNav(d.navLinks||[]);
+  renderCMSImages(d.siteImages||[]);
+  renderCMSContact(d.contactInfo||[],info);
+}
+function renderCMSHero(rows){
+  const host=document.querySelector("[data-cms-hero]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map((x,i)=>`<div class="cms-slide ${i===0?"active":""}" style="background-image:url('${safeAttr(x.imageUrl||"")}')"><div class="cms-slide-content"><h2>${esc(x.title||"")}</h2><p>${esc(x.subtitle||x.description||"")}</p>${x.buttonText?`<a class="btn primary" href="${safeAttr(x.buttonUrl||"#")}">${esc(x.buttonText)}</a>`:""}</div></div>`).join("");
+  let i=0;const slides=[...host.querySelectorAll(".cms-slide")];if(slides.length>1)setInterval(()=>{slides[i].classList.remove("active");i=(i+1)%slides.length;slides[i].classList.add("active")},5000);
+}
+function renderCMSProducts(rows){
+  const host=document.querySelector("[data-cms-products]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<article class="cms-product-card"><img src="${safeAttr(x.imageUrl||"")}" alt="${safeAttr(x.name||"")}"><h3>${esc(x.name||"")}</h3><p>${esc(x.shortDescription||x.description||"")}</p>${x.priceText?`<strong>${esc(x.priceText)}</strong>`:""}</article>`).join("");
+}
+function renderCMServices(rows){
+  const host=document.querySelector("[data-cms-services]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<article class="cms-service-card"><div>${esc(x.icon||"✓")}</div><h3>${esc(x.name||"")}</h3><p>${esc(x.description||"")}</p>${x.imageUrl?`<img src="${safeAttr(x.imageUrl)}" alt="">`:""}</article>`).join("");
+}
+function renderCMSNav(rows){
+  const host=document.querySelector("[data-cms-nav]");if(!host)return;
+  const active=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0));
+  if(active.length)host.innerHTML=active.map(x=>`<a href="${safeAttr(x.url||"#")}" target="${safeAttr(x.target||"_self")}">${esc(x.label||"")}</a>`).join("");
+}
+function renderCMSImages(rows){
+  const host=document.querySelector("[data-cms-images]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<img src="${safeAttr(x.imageUrl||"")}" alt="${safeAttr(x.altText||x.name||"")}">`).join("");
+}
+function renderCMSContact(rows,info){
+  const host=document.querySelector("[data-cms-contact]");if(!host)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<div><b>${esc(x.label||"")}</b><span>${esc(x.value||"")}</span></div>`).join("")+(info.whatsapp?`<a class="btn primary" href="https://wa.me/${String(info.whatsapp).replace(/\\D/g,"")}">WhatsApp</a>`:"");
+}
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function safeAttr(v){return String(v??"").replace(/["'<>]/g,"")}
+document.addEventListener("DOMContentLoaded",()=>loadPublicCMS());
+</script></body></html>`);w.document.close();
 }
 
 
@@ -206,6 +277,206 @@ async function saveInvoiceEditor(entity,id){
  if(!ok)return;
  try{toast("Updating transaction…");await api("updateTransaction",{entity,id,data});toast("Complete transaction updated successfully");openModule(entity.toLowerCase())}
  catch(e){toast(e.message,true)}
+}
+
+
+async function openStockLedger(){try{const d=await api("list",{entity:"stock"});currentRows=d.rows||[];currentEntity="stock";$("moduleTitle").textContent="Stock Ledger";renderModule("stock")}catch(e){toast(e.message,true)}}
+async function openLedger(entity,partyId){try{const d=await api("ledger",{entity,partyId});$("adminView").innerHTML=`<div class="toolbar"><button class="btn outline" onclick="openModule('${entity}')">← Back</button><button class="btn outline" onclick="window.print()">Print Ledger</button></div><div class="invoice"><h2>${esc(entity==="customers"?"Customer":"Supplier")} Ledger</h2><table><thead><tr><th>Date</th><th>Reference</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead><tbody>${(d.rows||[]).map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.reference)}</td><td>₹${Number(r.debit||0).toFixed(2)}</td><td>₹${Number(r.credit||0).toFixed(2)}</td><td>₹${Number(r.balance||0).toFixed(2)}</td></tr>`).join("")}</tbody></table></div>`}catch(e){toast(e.message,true)}}
+async function openDayEnd(){try{const d=await api("dayEnd",{date:new Date().toISOString().slice(0,10)});$("moduleTitle").textContent="Day-End Closing";$("adminView").innerHTML=`<div class="stats">${Object.entries(d.summary||{}).map(([k,v])=>`<div class="stat"><span>${esc(k)}</span><b>${typeof v==="number"?"₹"+v.toFixed(2):esc(v)}</b></div>`).join("")}</div><div class="card" style="margin-top:18px"><h3>Day-End Summary</h3><button class="btn primary" onclick='printDayEnd(${JSON.stringify(d.summary||{})})'>Print Day-End Report</button></div>`}catch(e){toast(e.message,true)}}
+function printDayEnd(s){const w=window.open("","_blank");if(!w)return toast("Allow popups to print",true);w.document.write(`<html><head><title>Day End</title><style>body{font-family:Arial;padding:30px}table{width:100%;border-collapse:collapse}td{border:1px solid #ddd;padding:10px}</style></head><body><h1>Shivsagar Krushi Seva Kendra & Hardware</h1><h2>Day-End Closing</h2><table>${Object.entries(s).map(([k,v])=>`<tr><td>${esc(k)}</td><td>${typeof v==="number"?"₹"+Number(v).toFixed(2):esc(v)}</td></tr>`).join("")}</table><script>window.print()<\/script><style>.cms-slide{display:none;min-height:360px;background-size:cover;background-position:center}.cms-slide.active{display:flex;align-items:center}.cms-slide-content{padding:40px;background:rgba(0,0,0,.45);color:#fff}.cms-product-card,.cms-service-card{padding:18px;border-radius:16px}.cms-product-card img,.cms-service-card img{max-width:100%;border-radius:12px}</style>
+<script>
+/* ===== Shivsagar Dynamic Website CMS ===== */
+const SHIVSAGAR_PUBLIC_CMS = {
+  apiUrl: (typeof SHIVSAGAR_CONFIG !== "undefined" && SHIVSAGAR_CONFIG.APPS_SCRIPT_URL) || window.SHIVSAGAR_API_URL || "",
+  cacheKey: "shivsagar_public_cms_v1"
+};
+async function loadPublicCMS(){
+  try{
+    if(!SHIVSAGAR_PUBLIC_CMS.apiUrl)return;
+    const res=await fetch(SHIVSAGAR_PUBLIC_CMS.apiUrl+"?action=publicCMS",{cache:"no-store"});
+    const data=await res.json();
+    if(!data.ok)return;
+    localStorage.setItem(SHIVSAGAR_PUBLIC_CMS.cacheKey,JSON.stringify(data));
+    applyPublicCMS(data);
+  }catch(e){
+    try{const c=localStorage.getItem(SHIVSAGAR_PUBLIC_CMS.cacheKey);if(c)applyPublicCMS(JSON.parse(c))}catch(_){}
+  }
+}
+function applyPublicCMS(d){
+  const q=(s)=>document.querySelector(s), qa=(s)=>document.querySelectorAll(s);
+  const info=(d.businessInfo||[])[0]||{};
+  const set=(sels,val)=>{if(!val)return;for(const s of sels){const el=q(s);if(el)el.textContent=val}};
+  set([".brand-name",".site-name","[data-business-name]"],info.businessName);
+  set([".brand-tagline",".site-tagline","[data-tagline]"],info.tagline);
+  set(["[data-phone]"],info.phone); set(["[data-email]"],info.email); set(["[data-address]"],info.address);
+  set(["[data-about]"],info.about);
+  if(info.logoUrl){qa("img[data-logo],.site-logo img,.brand-logo img").forEach(i=>i.src=info.logoUrl)}
+  // Generic CMS targets can be used anywhere in the page:
+  (d.siteContent||[]).forEach(x=>{
+    const targets=qa(`[data-cms-section="${CSS.escape(String(x.section||""))}"]`);
+    targets.forEach(el=>{if(x.title)el.querySelectorAll("[data-cms-title]").forEach(n=>n.textContent=x.title);if(x.subtitle)el.querySelectorAll("[data-cms-subtitle]").forEach(n=>n.textContent=x.subtitle);if(x.content)el.querySelectorAll("[data-cms-content]").forEach(n=>n.textContent=x.content);if(x.imageUrl)el.querySelectorAll("img[data-cms-image]").forEach(n=>n.src=x.imageUrl)})
+  });
+  renderCMSHero(d.heroSlides||[]);
+  renderCMSProducts(d.siteProducts||[]);
+  renderCMSServices(d.siteServices||[]);
+  renderCMSNav(d.navLinks||[]);
+  renderCMSImages(d.siteImages||[]);
+  renderCMSContact(d.contactInfo||[],info);
+}
+function renderCMSHero(rows){
+  const host=document.querySelector("[data-cms-hero]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map((x,i)=>`<div class="cms-slide ${i===0?"active":""}" style="background-image:url('${safeAttr(x.imageUrl||"")}')"><div class="cms-slide-content"><h2>${esc(x.title||"")}</h2><p>${esc(x.subtitle||x.description||"")}</p>${x.buttonText?`<a class="btn primary" href="${safeAttr(x.buttonUrl||"#")}">${esc(x.buttonText)}</a>`:""}</div></div>`).join("");
+  let i=0;const slides=[...host.querySelectorAll(".cms-slide")];if(slides.length>1)setInterval(()=>{slides[i].classList.remove("active");i=(i+1)%slides.length;slides[i].classList.add("active")},5000);
+}
+function renderCMSProducts(rows){
+  const host=document.querySelector("[data-cms-products]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<article class="cms-product-card"><img src="${safeAttr(x.imageUrl||"")}" alt="${safeAttr(x.name||"")}"><h3>${esc(x.name||"")}</h3><p>${esc(x.shortDescription||x.description||"")}</p>${x.priceText?`<strong>${esc(x.priceText)}</strong>`:""}</article>`).join("");
+}
+function renderCMServices(rows){
+  const host=document.querySelector("[data-cms-services]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<article class="cms-service-card"><div>${esc(x.icon||"✓")}</div><h3>${esc(x.name||"")}</h3><p>${esc(x.description||"")}</p>${x.imageUrl?`<img src="${safeAttr(x.imageUrl)}" alt="">`:""}</article>`).join("");
+}
+function renderCMSNav(rows){
+  const host=document.querySelector("[data-cms-nav]");if(!host)return;
+  const active=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0));
+  if(active.length)host.innerHTML=active.map(x=>`<a href="${safeAttr(x.url||"#")}" target="${safeAttr(x.target||"_self")}">${esc(x.label||"")}</a>`).join("");
+}
+function renderCMSImages(rows){
+  const host=document.querySelector("[data-cms-images]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<img src="${safeAttr(x.imageUrl||"")}" alt="${safeAttr(x.altText||x.name||"")}">`).join("");
+}
+function renderCMSContact(rows,info){
+  const host=document.querySelector("[data-cms-contact]");if(!host)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<div><b>${esc(x.label||"")}</b><span>${esc(x.value||"")}</span></div>`).join("")+(info.whatsapp?`<a class="btn primary" href="https://wa.me/${String(info.whatsapp).replace(/\\D/g,"")}">WhatsApp</a>`:"");
+}
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function safeAttr(v){return String(v??"").replace(/["'<>]/g,"")}
+document.addEventListener("DOMContentLoaded",()=>loadPublicCMS());
+</script></body></html>`);w.document.close()}
+function printThermal(data){const w=window.open("","_blank");if(!w)return toast("Allow popups to print",true);w.document.write(`<html><head><title>Receipt</title><style>@page{size:80mm auto;margin:3mm}body{font:12px monospace;width:72mm}h2{text-align:center}.row{display:flex;justify-content:space-between}</style></head><body><h2>SHIVSAGAR KRUSHI SEVA KENDRA</h2><div>Invoice: ${esc(data.invoiceNo||"")}</div><div>Date: ${esc(data.date||"")}</div><hr>${(data.items||[]).map(i=>`<div>${esc(i.productName)}</div><div class="row"><span>${i.qty} × ₹${Number(i.unitPrice||i.unitCost||0).toFixed(2)}</span><span>₹${(i.qty*Number(i.unitPrice||i.unitCost||0)).toFixed(2)}</span></div>`).join("")}<hr><div class="row"><b>Total</b><b>₹${Number(data.total||0).toFixed(2)}</b></div><script>window.print()<\/script><style>.cms-slide{display:none;min-height:360px;background-size:cover;background-position:center}.cms-slide.active{display:flex;align-items:center}.cms-slide-content{padding:40px;background:rgba(0,0,0,.45);color:#fff}.cms-product-card,.cms-service-card{padding:18px;border-radius:16px}.cms-product-card img,.cms-service-card img{max-width:100%;border-radius:12px}</style>
+<script>
+/* ===== Shivsagar Dynamic Website CMS ===== */
+const SHIVSAGAR_PUBLIC_CMS = {
+  apiUrl: (typeof SHIVSAGAR_CONFIG !== "undefined" && SHIVSAGAR_CONFIG.APPS_SCRIPT_URL) || window.SHIVSAGAR_API_URL || "",
+  cacheKey: "shivsagar_public_cms_v1"
+};
+async function loadPublicCMS(){
+  try{
+    if(!SHIVSAGAR_PUBLIC_CMS.apiUrl)return;
+    const res=await fetch(SHIVSAGAR_PUBLIC_CMS.apiUrl+"?action=publicCMS",{cache:"no-store"});
+    const data=await res.json();
+    if(!data.ok)return;
+    localStorage.setItem(SHIVSAGAR_PUBLIC_CMS.cacheKey,JSON.stringify(data));
+    applyPublicCMS(data);
+  }catch(e){
+    try{const c=localStorage.getItem(SHIVSAGAR_PUBLIC_CMS.cacheKey);if(c)applyPublicCMS(JSON.parse(c))}catch(_){}
+  }
+}
+function applyPublicCMS(d){
+  const q=(s)=>document.querySelector(s), qa=(s)=>document.querySelectorAll(s);
+  const info=(d.businessInfo||[])[0]||{};
+  const set=(sels,val)=>{if(!val)return;for(const s of sels){const el=q(s);if(el)el.textContent=val}};
+  set([".brand-name",".site-name","[data-business-name]"],info.businessName);
+  set([".brand-tagline",".site-tagline","[data-tagline]"],info.tagline);
+  set(["[data-phone]"],info.phone); set(["[data-email]"],info.email); set(["[data-address]"],info.address);
+  set(["[data-about]"],info.about);
+  if(info.logoUrl){qa("img[data-logo],.site-logo img,.brand-logo img").forEach(i=>i.src=info.logoUrl)}
+  // Generic CMS targets can be used anywhere in the page:
+  (d.siteContent||[]).forEach(x=>{
+    const targets=qa(`[data-cms-section="${CSS.escape(String(x.section||""))}"]`);
+    targets.forEach(el=>{if(x.title)el.querySelectorAll("[data-cms-title]").forEach(n=>n.textContent=x.title);if(x.subtitle)el.querySelectorAll("[data-cms-subtitle]").forEach(n=>n.textContent=x.subtitle);if(x.content)el.querySelectorAll("[data-cms-content]").forEach(n=>n.textContent=x.content);if(x.imageUrl)el.querySelectorAll("img[data-cms-image]").forEach(n=>n.src=x.imageUrl)})
+  });
+  renderCMSHero(d.heroSlides||[]);
+  renderCMSProducts(d.siteProducts||[]);
+  renderCMSServices(d.siteServices||[]);
+  renderCMSNav(d.navLinks||[]);
+  renderCMSImages(d.siteImages||[]);
+  renderCMSContact(d.contactInfo||[],info);
+}
+function renderCMSHero(rows){
+  const host=document.querySelector("[data-cms-hero]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map((x,i)=>`<div class="cms-slide ${i===0?"active":""}" style="background-image:url('${safeAttr(x.imageUrl||"")}')"><div class="cms-slide-content"><h2>${esc(x.title||"")}</h2><p>${esc(x.subtitle||x.description||"")}</p>${x.buttonText?`<a class="btn primary" href="${safeAttr(x.buttonUrl||"#")}">${esc(x.buttonText)}</a>`:""}</div></div>`).join("");
+  let i=0;const slides=[...host.querySelectorAll(".cms-slide")];if(slides.length>1)setInterval(()=>{slides[i].classList.remove("active");i=(i+1)%slides.length;slides[i].classList.add("active")},5000);
+}
+function renderCMSProducts(rows){
+  const host=document.querySelector("[data-cms-products]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<article class="cms-product-card"><img src="${safeAttr(x.imageUrl||"")}" alt="${safeAttr(x.name||"")}"><h3>${esc(x.name||"")}</h3><p>${esc(x.shortDescription||x.description||"")}</p>${x.priceText?`<strong>${esc(x.priceText)}</strong>`:""}</article>`).join("");
+}
+function renderCMServices(rows){
+  const host=document.querySelector("[data-cms-services]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<article class="cms-service-card"><div>${esc(x.icon||"✓")}</div><h3>${esc(x.name||"")}</h3><p>${esc(x.description||"")}</p>${x.imageUrl?`<img src="${safeAttr(x.imageUrl)}" alt="">`:""}</article>`).join("");
+}
+function renderCMSNav(rows){
+  const host=document.querySelector("[data-cms-nav]");if(!host)return;
+  const active=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0));
+  if(active.length)host.innerHTML=active.map(x=>`<a href="${safeAttr(x.url||"#")}" target="${safeAttr(x.target||"_self")}">${esc(x.label||"")}</a>`).join("");
+}
+function renderCMSImages(rows){
+  const host=document.querySelector("[data-cms-images]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<img src="${safeAttr(x.imageUrl||"")}" alt="${safeAttr(x.altText||x.name||"")}">`).join("");
+}
+function renderCMSContact(rows,info){
+  const host=document.querySelector("[data-cms-contact]");if(!host)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<div><b>${esc(x.label||"")}</b><span>${esc(x.value||"")}</span></div>`).join("")+(info.whatsapp?`<a class="btn primary" href="https://wa.me/${String(info.whatsapp).replace(/\\D/g,"")}">WhatsApp</a>`:"");
+}
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function safeAttr(v){return String(v??"").replace(/["'<>]/g,"")}
+document.addEventListener("DOMContentLoaded",()=>loadPublicCMS());
+</script></body></html>`);w.document.close()}
+
+
+function cmsFields(entity){
+ const map={
+ siteContent:["section","title","subtitle","content","imageUrl","buttonText","buttonUrl","active","sortOrder"],
+ heroSlides:["title","subtitle","description","imageUrl","buttonText","buttonUrl","active","sortOrder"],
+ siteImages:["name","imageUrl","altText","section","active","sortOrder"],
+ siteProducts:["name","shortDescription","description","imageUrl","priceText","category","active","sortOrder"],
+ siteServices:["name","description","icon","imageUrl","active","sortOrder"],
+ businessInfo:["businessName","tagline","logoUrl","phone","whatsapp","email","address","gstin","hours","about","facebook","instagram","youtube","active"],
+ navLinks:["label","url","target","active","sortOrder"],
+ contactInfo:["label","value","type","active","sortOrder"]
+ };
+ return map[entity]||[];
+}
+async function openCMS(entity){
+ const d=await api("list",{entity});
+ currentRows=d.rows||[]; currentEntity=entity; $("moduleTitle").textContent=modules[entity]||entity;
+ renderCMS(entity);
+}
+function renderCMS(entity){
+ const fields=cmsFields(entity);
+ const rows=currentRows||[];
+ $("adminView").innerHTML=`<div class="toolbar"><button class="btn primary" onclick="cmsCreate('${entity}')">＋ Add</button><button class="btn outline" onclick="openCMS('${entity}')">↻ Refresh</button></div>
+ <div class="card"><h3>${esc(modules[entity]||entity)}</h3><div class="table-wrap"><table><thead><tr>${fields.map(f=>`<th>${esc(f)}</th>`).join("")}<th>Actions</th></tr></thead><tbody>${rows.map(r=>`<tr>${fields.map(f=>`<td>${esc(r[f]??"")}</td>`).join("")}<td><button class="btn" onclick='cmsEdit("${entity}","${String(r.id).replace(/"/g,"&quot;")}")'>Edit</button><button class="btn danger" onclick='cmsDelete("${entity}","${String(r.id).replace(/"/g,"&quot;")}")'>Delete</button></td></tr>`).join("")}</tbody></table></div></div>`;
+}
+async function cmsCreate(entity){openCMSEditor(entity,null)}
+async function cmsEdit(entity,id){const r=(currentRows||[]).find(x=>String(x.id)===String(id));openCMSEditor(entity,r)}
+function openCMSEditor(entity,row){
+ const fields=cmsFields(entity);
+ $("adminView").innerHTML=`<div class="toolbar"><button class="btn outline" onclick="openCMS('${entity}')">← Back</button></div><div class="card"><h3>${row?"Edit":"Create"} ${esc(modules[entity]||entity)}</h3>
+ <div class="form-grid">${fields.map(f=>`<label class="field"><span>${esc(f)}</span>${f==="content"||f==="description"||f==="about"?`<textarea id="cms_${f}">${esc(row?.[f]??"")}</textarea>`:`<input id="cms_${f}" value="${esc(row?.[f]??"")}">`}</label>`).join("")}</div>
+ <button class="btn primary" onclick='cmsSave("${entity}","${row?.id||""}")'>Save</button></div>`;
+}
+async function cmsSave(entity,id){
+ const ok=await confirmAction((id?"Update":"Create")+" website content? The public website will change after this operation.");
+ if(!ok)return;
+ const data={};cmsFields(entity).forEach(f=>data[f]=$("cms_"+f)?.value??"");
+ try{await api(id?"update":"create",{entity,id,data});toast((id?"Updated":"Created")+" successfully");openCMS(entity)}catch(e){toast(e.message,true)}
+}
+async function cmsDelete(entity,id){
+ const ok=await confirmAction("Delete this website content? This can change the public website immediately.");
+ if(!ok)return;
+ try{await api("delete",{entity,id});toast("Deleted successfully");openCMS(entity)}catch(e){toast(e.message,true)}
+}
+function renderOperationalToggles(){
+ const ops=Object.entries(modules).filter(([k])=>!["siteContent","heroSlides","siteImages","siteProducts","siteServices","businessInfo","navLinks","contactInfo"].includes(k));
+ $("adminView").innerHTML=`<div class="card"><h3>Operational Function Controls</h3><p>Enable or disable operational modules from the Admin Portal. Changes are stored in Google Sheets.</p><div class="toggle-grid">${ops.map(([k,v])=>`<label class="toggle-row"><span>${esc(v)}</span><input type="checkbox" ${localStorage.getItem("op_"+k)!=="off"?"checked":""} onchange="setOperationalToggle('${k}',this.checked)"><i></i></label>`).join("")}</div></div>`;
+}
+async function setOperationalToggle(key,enabled){
+ const ok=await confirmAction((enabled?"Enable ":"Disable ")+(modules[key]||key)+" operational function?");
+ if(!ok){renderOperationalToggles();return}
+ localStorage.setItem("op_"+key,enabled?"on":"off");
+ try{await api("upsertSetting",{key:"operation."+key,value:enabled?"enabled":"disabled"});toast((modules[key]||key)+" "+(enabled?"enabled":"disabled"))}catch(e){toast(e.message,true)}
 }
 
 function filterTable(){let q=($("searchBox").value||"").toLowerCase();document.querySelectorAll("#records tbody tr").forEach(r=>r.style.display=r.innerText.toLowerCase().includes(q)?"":"none")}
@@ -262,7 +533,76 @@ function renderModule(e){
 function exportCSV(e){if(!currentRows.length)return toast("No data available to export",true);let k=Object.keys(currentRows[0]),csv=[k.join(","),...currentRows.map(r=>k.map(x=>`"${String(r[x]??"").replaceAll('"','""')}"`).join(","))].join("\\n");download(csv,modules[e]+".csv","text/csv");toast("Spreadsheet export generated")}
 function exportPDF(e){if(!currentRows.length)return toast("No data available to export",true);let k=Object.keys(currentRows[0]);let html=`<!doctype html><html><head><title>${modules[e]}</title><style>body{font-family:Arial;padding:25px}h1{color:#176b3a}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:6px;text-align:left;font-size:11px}th{background:#eaf3ec}
 .pos-grid{display:grid;grid-template-columns:1.5fr .9fr;gap:18px}.pos-panel{background:#fff;border-radius:17px;padding:18px;box-shadow:var(--shadow)}.pos-products{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;max-height:520px;overflow:auto}.pos-product{border:1px solid #e2ebe4;border-radius:12px;padding:12px;cursor:pointer;background:#fbfdfb;transition:.2s}.pos-product:hover{transform:translateY(-2px);border-color:#8ebd98}.cart-line{display:grid;grid-template-columns:1fr 75px 85px 35px;gap:7px;align-items:center;padding:10px 0;border-bottom:1px solid #edf1ee}.cart-line input{width:100%;padding:8px;border:1px solid #d7e0d9;border-radius:8px}.total-box{background:#edf6ef;border-radius:12px;padding:15px;margin-top:12px}.invoice{background:white;padding:30px;max-width:900px;margin:auto}.invoice table{margin-top:15px}.invoice .right{text-align:right}@media(max-width:950px){.pos-grid{grid-template-columns:1fr}}
-</style></head><body><h1>Shivsagar Krushi Seva Kendra & Hardware</h1><h2>${modules[e]}</h2><p>Generated: ${new Date().toLocaleString()}</p><table><tr>${k.map(x=>`<th>${esc(x)}</th>`).join("")}</tr>${currentRows.map(r=>`<tr>${k.map(x=>`<td>${esc(r[x]??"")}</td>`).join("")}</tr>`).join("")}</table><script>window.print()<\\/script></body></html>`;download(html,modules[e]+".html","text/html");toast("PDF-ready report generated — choose Save as PDF in Print")}
+</style></head><body><h1>Shivsagar Krushi Seva Kendra & Hardware</h1><h2>${modules[e]}</h2><p>Generated: ${new Date().toLocaleString()}</p><table><tr>${k.map(x=>`<th>${esc(x)}</th>`).join("")}</tr>${currentRows.map(r=>`<tr>${k.map(x=>`<td>${esc(r[x]??"")}</td>`).join("")}</tr>`).join("")}</table><script>window.print()<\\/script><style>.cms-slide{display:none;min-height:360px;background-size:cover;background-position:center}.cms-slide.active{display:flex;align-items:center}.cms-slide-content{padding:40px;background:rgba(0,0,0,.45);color:#fff}.cms-product-card,.cms-service-card{padding:18px;border-radius:16px}.cms-product-card img,.cms-service-card img{max-width:100%;border-radius:12px}</style>
+<script>
+/* ===== Shivsagar Dynamic Website CMS ===== */
+const SHIVSAGAR_PUBLIC_CMS = {
+  apiUrl: (typeof SHIVSAGAR_CONFIG !== "undefined" && SHIVSAGAR_CONFIG.APPS_SCRIPT_URL) || window.SHIVSAGAR_API_URL || "",
+  cacheKey: "shivsagar_public_cms_v1"
+};
+async function loadPublicCMS(){
+  try{
+    if(!SHIVSAGAR_PUBLIC_CMS.apiUrl)return;
+    const res=await fetch(SHIVSAGAR_PUBLIC_CMS.apiUrl+"?action=publicCMS",{cache:"no-store"});
+    const data=await res.json();
+    if(!data.ok)return;
+    localStorage.setItem(SHIVSAGAR_PUBLIC_CMS.cacheKey,JSON.stringify(data));
+    applyPublicCMS(data);
+  }catch(e){
+    try{const c=localStorage.getItem(SHIVSAGAR_PUBLIC_CMS.cacheKey);if(c)applyPublicCMS(JSON.parse(c))}catch(_){}
+  }
+}
+function applyPublicCMS(d){
+  const q=(s)=>document.querySelector(s), qa=(s)=>document.querySelectorAll(s);
+  const info=(d.businessInfo||[])[0]||{};
+  const set=(sels,val)=>{if(!val)return;for(const s of sels){const el=q(s);if(el)el.textContent=val}};
+  set([".brand-name",".site-name","[data-business-name]"],info.businessName);
+  set([".brand-tagline",".site-tagline","[data-tagline]"],info.tagline);
+  set(["[data-phone]"],info.phone); set(["[data-email]"],info.email); set(["[data-address]"],info.address);
+  set(["[data-about]"],info.about);
+  if(info.logoUrl){qa("img[data-logo],.site-logo img,.brand-logo img").forEach(i=>i.src=info.logoUrl)}
+  // Generic CMS targets can be used anywhere in the page:
+  (d.siteContent||[]).forEach(x=>{
+    const targets=qa(`[data-cms-section="${CSS.escape(String(x.section||""))}"]`);
+    targets.forEach(el=>{if(x.title)el.querySelectorAll("[data-cms-title]").forEach(n=>n.textContent=x.title);if(x.subtitle)el.querySelectorAll("[data-cms-subtitle]").forEach(n=>n.textContent=x.subtitle);if(x.content)el.querySelectorAll("[data-cms-content]").forEach(n=>n.textContent=x.content);if(x.imageUrl)el.querySelectorAll("img[data-cms-image]").forEach(n=>n.src=x.imageUrl)})
+  });
+  renderCMSHero(d.heroSlides||[]);
+  renderCMSProducts(d.siteProducts||[]);
+  renderCMSServices(d.siteServices||[]);
+  renderCMSNav(d.navLinks||[]);
+  renderCMSImages(d.siteImages||[]);
+  renderCMSContact(d.contactInfo||[],info);
+}
+function renderCMSHero(rows){
+  const host=document.querySelector("[data-cms-hero]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map((x,i)=>`<div class="cms-slide ${i===0?"active":""}" style="background-image:url('${safeAttr(x.imageUrl||"")}')"><div class="cms-slide-content"><h2>${esc(x.title||"")}</h2><p>${esc(x.subtitle||x.description||"")}</p>${x.buttonText?`<a class="btn primary" href="${safeAttr(x.buttonUrl||"#")}">${esc(x.buttonText)}</a>`:""}</div></div>`).join("");
+  let i=0;const slides=[...host.querySelectorAll(".cms-slide")];if(slides.length>1)setInterval(()=>{slides[i].classList.remove("active");i=(i+1)%slides.length;slides[i].classList.add("active")},5000);
+}
+function renderCMSProducts(rows){
+  const host=document.querySelector("[data-cms-products]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<article class="cms-product-card"><img src="${safeAttr(x.imageUrl||"")}" alt="${safeAttr(x.name||"")}"><h3>${esc(x.name||"")}</h3><p>${esc(x.shortDescription||x.description||"")}</p>${x.priceText?`<strong>${esc(x.priceText)}</strong>`:""}</article>`).join("");
+}
+function renderCMServices(rows){
+  const host=document.querySelector("[data-cms-services]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<article class="cms-service-card"><div>${esc(x.icon||"✓")}</div><h3>${esc(x.name||"")}</h3><p>${esc(x.description||"")}</p>${x.imageUrl?`<img src="${safeAttr(x.imageUrl)}" alt="">`:""}</article>`).join("");
+}
+function renderCMSNav(rows){
+  const host=document.querySelector("[data-cms-nav]");if(!host)return;
+  const active=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0));
+  if(active.length)host.innerHTML=active.map(x=>`<a href="${safeAttr(x.url||"#")}" target="${safeAttr(x.target||"_self")}">${esc(x.label||"")}</a>`).join("");
+}
+function renderCMSImages(rows){
+  const host=document.querySelector("[data-cms-images]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<img src="${safeAttr(x.imageUrl||"")}" alt="${safeAttr(x.altText||x.name||"")}">`).join("");
+}
+function renderCMSContact(rows,info){
+  const host=document.querySelector("[data-cms-contact]");if(!host)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<div><b>${esc(x.label||"")}</b><span>${esc(x.value||"")}</span></div>`).join("")+(info.whatsapp?`<a class="btn primary" href="https://wa.me/${String(info.whatsapp).replace(/\\D/g,"")}">WhatsApp</a>`:"");
+}
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function safeAttr(v){return String(v??"").replace(/["'<>]/g,"")}
+document.addEventListener("DOMContentLoaded",()=>loadPublicCMS());
+</script></body></html>`;download(html,modules[e]+".html","text/html");toast("PDF-ready report generated — choose Save as PDF in Print")}
 function download(s,n,t){let a=document.createElement("a");a.href=URL.createObjectURL(new Blob([s],{type:t}));a.download=n;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 function esc(x){return String(x).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
 function productInfo(n){$("modal").innerHTML=`<div class="modal-box"><h2>${n}</h2><p>Product availability, pricing, batch and detailed specifications can be maintained from the Admin inventory module.</p><button class="btn primary" onclick="closeModal()">Close</button></div>`;$("modal").classList.remove("hidden")}
@@ -270,4 +610,73 @@ function configuredContact(t){toast(t==="whatsapp"?"Configure WhatsApp number in
 let slide=0;const slideCount=3;function moveSlide(n){slide=(slide+n+slideCount)%slideCount;$("slides").style.transform=`translateX(-${slide*100}%)`;document.querySelectorAll(".dot").forEach((d,i)=>d.classList.toggle("active",i===slide))}
 $("dots").innerHTML=Array.from({length:slideCount},(_,i)=>`<button class="dot ${i===0?"active":""}" onclick="slide=${i};moveSlide(0)"></button>`).join("");setInterval(()=>moveSlide(1),6000);
 if(session){$("public").classList.add("hidden");$("adminPage").classList.remove("hidden");buildMenu();openModule("dashboard")}else showPublic();
+</script><style>.cms-slide{display:none;min-height:360px;background-size:cover;background-position:center}.cms-slide.active{display:flex;align-items:center}.cms-slide-content{padding:40px;background:rgba(0,0,0,.45);color:#fff}.cms-product-card,.cms-service-card{padding:18px;border-radius:16px}.cms-product-card img,.cms-service-card img{max-width:100%;border-radius:12px}</style>
+<script>
+/* ===== Shivsagar Dynamic Website CMS ===== */
+const SHIVSAGAR_PUBLIC_CMS = {
+  apiUrl: (typeof SHIVSAGAR_CONFIG !== "undefined" && SHIVSAGAR_CONFIG.APPS_SCRIPT_URL) || window.SHIVSAGAR_API_URL || "",
+  cacheKey: "shivsagar_public_cms_v1"
+};
+async function loadPublicCMS(){
+  try{
+    if(!SHIVSAGAR_PUBLIC_CMS.apiUrl)return;
+    const res=await fetch(SHIVSAGAR_PUBLIC_CMS.apiUrl+"?action=publicCMS",{cache:"no-store"});
+    const data=await res.json();
+    if(!data.ok)return;
+    localStorage.setItem(SHIVSAGAR_PUBLIC_CMS.cacheKey,JSON.stringify(data));
+    applyPublicCMS(data);
+  }catch(e){
+    try{const c=localStorage.getItem(SHIVSAGAR_PUBLIC_CMS.cacheKey);if(c)applyPublicCMS(JSON.parse(c))}catch(_){}
+  }
+}
+function applyPublicCMS(d){
+  const q=(s)=>document.querySelector(s), qa=(s)=>document.querySelectorAll(s);
+  const info=(d.businessInfo||[])[0]||{};
+  const set=(sels,val)=>{if(!val)return;for(const s of sels){const el=q(s);if(el)el.textContent=val}};
+  set([".brand-name",".site-name","[data-business-name]"],info.businessName);
+  set([".brand-tagline",".site-tagline","[data-tagline]"],info.tagline);
+  set(["[data-phone]"],info.phone); set(["[data-email]"],info.email); set(["[data-address]"],info.address);
+  set(["[data-about]"],info.about);
+  if(info.logoUrl){qa("img[data-logo],.site-logo img,.brand-logo img").forEach(i=>i.src=info.logoUrl)}
+  // Generic CMS targets can be used anywhere in the page:
+  (d.siteContent||[]).forEach(x=>{
+    const targets=qa(`[data-cms-section="${CSS.escape(String(x.section||""))}"]`);
+    targets.forEach(el=>{if(x.title)el.querySelectorAll("[data-cms-title]").forEach(n=>n.textContent=x.title);if(x.subtitle)el.querySelectorAll("[data-cms-subtitle]").forEach(n=>n.textContent=x.subtitle);if(x.content)el.querySelectorAll("[data-cms-content]").forEach(n=>n.textContent=x.content);if(x.imageUrl)el.querySelectorAll("img[data-cms-image]").forEach(n=>n.src=x.imageUrl)})
+  });
+  renderCMSHero(d.heroSlides||[]);
+  renderCMSProducts(d.siteProducts||[]);
+  renderCMSServices(d.siteServices||[]);
+  renderCMSNav(d.navLinks||[]);
+  renderCMSImages(d.siteImages||[]);
+  renderCMSContact(d.contactInfo||[],info);
+}
+function renderCMSHero(rows){
+  const host=document.querySelector("[data-cms-hero]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map((x,i)=>`<div class="cms-slide ${i===0?"active":""}" style="background-image:url('${safeAttr(x.imageUrl||"")}')"><div class="cms-slide-content"><h2>${esc(x.title||"")}</h2><p>${esc(x.subtitle||x.description||"")}</p>${x.buttonText?`<a class="btn primary" href="${safeAttr(x.buttonUrl||"#")}">${esc(x.buttonText)}</a>`:""}</div></div>`).join("");
+  let i=0;const slides=[...host.querySelectorAll(".cms-slide")];if(slides.length>1)setInterval(()=>{slides[i].classList.remove("active");i=(i+1)%slides.length;slides[i].classList.add("active")},5000);
+}
+function renderCMSProducts(rows){
+  const host=document.querySelector("[data-cms-products]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<article class="cms-product-card"><img src="${safeAttr(x.imageUrl||"")}" alt="${safeAttr(x.name||"")}"><h3>${esc(x.name||"")}</h3><p>${esc(x.shortDescription||x.description||"")}</p>${x.priceText?`<strong>${esc(x.priceText)}</strong>`:""}</article>`).join("");
+}
+function renderCMServices(rows){
+  const host=document.querySelector("[data-cms-services]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<article class="cms-service-card"><div>${esc(x.icon||"✓")}</div><h3>${esc(x.name||"")}</h3><p>${esc(x.description||"")}</p>${x.imageUrl?`<img src="${safeAttr(x.imageUrl)}" alt="">`:""}</article>`).join("");
+}
+function renderCMSNav(rows){
+  const host=document.querySelector("[data-cms-nav]");if(!host)return;
+  const active=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0));
+  if(active.length)host.innerHTML=active.map(x=>`<a href="${safeAttr(x.url||"#")}" target="${safeAttr(x.target||"_self")}">${esc(x.label||"")}</a>`).join("");
+}
+function renderCMSImages(rows){
+  const host=document.querySelector("[data-cms-images]");if(!host||!rows.length)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<img src="${safeAttr(x.imageUrl||"")}" alt="${safeAttr(x.altText||x.name||"")}">`).join("");
+}
+function renderCMSContact(rows,info){
+  const host=document.querySelector("[data-cms-contact]");if(!host)return;
+  host.innerHTML=rows.filter(x=>String(x.active)!=="false"&&String(x.active)!=="0").sort((a,b)=>Number(a.sortOrder||0)-Number(b.sortOrder||0)).map(x=>`<div><b>${esc(x.label||"")}</b><span>${esc(x.value||"")}</span></div>`).join("")+(info.whatsapp?`<a class="btn primary" href="https://wa.me/${String(info.whatsapp).replace(/\\D/g,"")}">WhatsApp</a>`:"");
+}
+function esc(v){return String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function safeAttr(v){return String(v??"").replace(/["'<>]/g,"")}
+document.addEventListener("DOMContentLoaded",()=>loadPublicCMS());
 </script></body></html>
